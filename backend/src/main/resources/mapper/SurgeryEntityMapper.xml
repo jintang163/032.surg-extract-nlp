@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.surg.extract.mapper.SurgeryEntityMapper">
+
+    <select id="selectByRecordId" resultType="com.surg.extract.entity.SurgeryEntity">
+        SELECT * FROM surgery_entity
+        WHERE record_id = #{recordId} AND deleted = 0
+        ORDER BY start_pos ASC, id ASC
+    </select>
+
+    <insert id="batchInsert">
+        INSERT INTO surgery_entity
+            (record_id, entity_type, entity_value, entity_unit, confidence, source,
+             start_pos, end_pos, original_text, verified, created_time, updated_time, deleted)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.recordId}, #{item.entityType}, #{item.entityValue}, #{item.entityUnit},
+             #{item.confidence}, #{item.source}, #{item.startPos}, #{item.endPos},
+             #{item.originalText}, 0, NOW(), NOW(), 0)
+        </foreach>
+    </insert>
+
+    <delete id="deleteByRecordId">
+        DELETE FROM surgery_entity WHERE record_id = #{recordId}
+    </delete>
+
+</mapper>

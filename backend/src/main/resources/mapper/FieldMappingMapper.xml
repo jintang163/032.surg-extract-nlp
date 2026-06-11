@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.surg.extract.mapper.FieldMappingMapper">
+
+    <select id="selectEnabledMappings" resultType="com.surg.extract.entity.FieldMapping">
+        SELECT * FROM field_mapping
+        WHERE enabled = 1
+        <if test="targetTable != null and targetTable != ''">
+            AND target_table = #{targetTable}
+        </if>
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+</mapper>

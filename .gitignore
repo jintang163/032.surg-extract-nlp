@@ -1,41 +1,105 @@
-# Java
-*.class
-*.jar
-*.war
-*.ear
-target/
-!.mvn/wrapper/maven-wrapper.jar
+# ============================================================
+# Java / Maven
+# ============================================================
+backend/target/
+backend/.idea/
+backend/*.iml
+backend/HELP.md
+backend/.mvn/
+!backend/.mvn/wrapper/maven-wrapper.jar
+backend/mvnw
+backend/mvnw.cmd
+backend/.classpath
+backend/.project
+backend/.settings/
+backend/bin/
 
-# IDE
-.idea/
-*.iml
-.vscode/
-*.swp
-*.swo
+# ============================================================
+# Python
+# ============================================================
+nlp-service/venv/
+nlp-service/__pycache__/
+nlp-service/**/__pycache__/
+nlp-service/*.pyc
+nlp-service/**/*.pyc
+nlp-service/.pytest_cache/
+nlp-service/.mypy_cache/
+nlp-service/.ruff_cache/
+nlp-service/data/
+nlp-service/logs/
+nlp-service/*.egg-info/
 
-# Node
-node_modules/
-dist/
-.npm
-.eslintcache
+# ============================================================
+# Frontend / Node.js
+# ============================================================
+frontend/node_modules/
+frontend/dist/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.nuxt/
+frontend/.cache/
+frontend/.parcel-cache/
+frontend/.eslintcache
+frontend/.stylelintcache
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+frontend/.env.local
+frontend/.env.production.local
+frontend/.env.development.local
 
-# Logs
+# ============================================================
+# Docker / Data
+# ============================================================
+data/
 *.log
 logs/
 
-# OS
+# ============================================================
+# IDE / Editor
+# ============================================================
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.vs/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+.history/
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Desktop.ini
 
-# MinIO
-minio-data/
-
-# Docker
+# ============================================================
+# OS / Temp
+# ============================================================
+*.bak
+*.tmp
+*.temp
 *.pid
 *.seed
-
-# Trae
-.trae/
-
-# WeChat Mini Program
-miniprogram_npm/
+*.pid.lock
+coverage/
+*.cover
+.hypothesis/
+.pytest_cache/
+lib-cov/
+.grunt
+.lock-wscript
+build/Release
+node_modules
+jspm_packages/
+bower_components/
+.npm
+.eslintcache
+.node_repl_history
+.yarn/
+.tgz
