@@ -1,15 +1,9 @@
 package com.surg.extract.feign;
 
-import com.surg.extract.dto.NlpNerRequest;
-import com.surg.extract.dto.NlpNerResponse;
-import com.surg.extract.dto.NlpOcrRequest;
-import com.surg.extract.dto.NlpOcrResponse;
+import com.surg.extract.dto.*;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 @FeignClient(
@@ -27,6 +21,33 @@ public interface NlpServiceClient {
 
     @PostMapping("/ocr/process-text")
     NlpOcrResponse processOcrByFilePath(@RequestBody NlpOcrRequest request);
+
+    @PostMapping(value = "/asr/process", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    AsrProcessResponseDTO processAsr(
+            @RequestPart("file") MultipartFile file,
+            @RequestParam("language") String language
+    );
+
+    @PostMapping("/asr/process-path")
+    AsrProcessResponseDTO processAsrByFilePath(@RequestBody AsrProcessRequestDTO request);
+
+    @PostMapping(value = "/instrument/recognize", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    InstrumentRecognitionResponseDTO recognizeInstrument(
+            @RequestPart("file") MultipartFile file,
+            @RequestParam("mode") String mode,
+            @RequestParam("confidence_threshold") Double confidenceThreshold
+    );
+
+    @PostMapping("/instrument/recognize-path")
+    InstrumentRecognitionResponseDTO recognizeInstrumentByFilePath(
+            @RequestBody InstrumentRecognitionRequestDTO request
+    );
+
+    @GetMapping("/instrument/catalog")
+    InstrumentCatalogDTO getInstrumentCatalog();
+
+    @PostMapping("/multimodal/fuse")
+    MultimodalFusionResponseDTO fuseMultimodal(@RequestBody MultimodalFusionRequestDTO request);
 
     @PostMapping("/ner/extract")
     NlpNerResponse extractEntities(@RequestBody NlpNerRequest request);

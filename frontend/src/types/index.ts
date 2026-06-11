@@ -37,6 +37,8 @@ export type ProcessStatus =
   | 'PENDING'
   | 'OCR_PROCESSING'
   | 'OCR_DONE'
+  | 'ASR_PROCESSING'
+  | 'ASR_DONE'
   | 'NER_PROCESSING'
   | 'NER_DONE'
   | 'COMPLETED'
@@ -46,19 +48,23 @@ export const ProcessStatusMap: Record<ProcessStatus, { label: string; color: str
   PENDING: { label: '待处理', color: 'default' },
   OCR_PROCESSING: { label: 'OCR处理中', color: 'processing' },
   OCR_DONE: { label: 'OCR完成', color: 'blue' },
+  ASR_PROCESSING: { label: '语音识别中', color: 'processing' },
+  ASR_DONE: { label: '语音识别完成', color: 'purple' },
   NER_PROCESSING: { label: '实体抽取中', color: 'processing' },
   NER_DONE: { label: '抽取完成', color: 'cyan' },
   COMPLETED: { label: '已完成', color: 'success' },
   FAILED: { label: '处理失败', color: 'error' },
 }
 
-export type FileType = 'TEXT' | 'WORD' | 'PDF' | 'IMAGE' | 'UNKNOWN'
+export type FileType = 'TEXT' | 'WORD' | 'PDF' | 'IMAGE' | 'AUDIO' | 'VIDEO' | 'UNKNOWN'
 
 export const FileTypeMap: Record<FileType, { label: string; icon: string }> = {
   TEXT: { label: '纯文本', icon: 'FileTextOutlined' },
   WORD: { label: 'Word文档', icon: 'FileWordOutlined' },
   PDF: { label: 'PDF文档', icon: 'FilePdfOutlined' },
   IMAGE: { label: '图片', icon: 'FileImageOutlined' },
+  AUDIO: { label: '音频', icon: 'AudioOutlined' },
+  VIDEO: { label: '视频', icon: 'VideoCameraOutlined' },
   UNKNOWN: { label: '未知', icon: 'FileOutlined' },
 }
 
@@ -77,6 +83,13 @@ export interface SurgeryRecord {
   fileSize?: number
   ocrText?: string
   processedText?: string
+  asrText?: string
+  audioDuration?: number
+  asrSegments?: any[]
+  enhancedText?: string
+  instruments?: DetectedInstrument[]
+  fusionStats?: Record<string, any>
+  multimodalStatus?: 'NONE' | 'ASR_DONE' | 'INSTRUMENT_DONE' | 'FUSED' | 'FUSION_FAILED' | 'FUSION_ERROR'
   uploadUserId?: number
   uploadUserName?: string
   uploadTime: string
@@ -94,6 +107,15 @@ export interface SurgeryRecord {
   hisSynced?: number
   hisSyncTime?: string
   hisSyncMessage?: string
+}
+
+export interface DetectedInstrument {
+  instrumentName: string
+  instrumentCode?: string
+  category?: string
+  confidence?: number
+  count?: number
+  position?: { x?: number; y?: number; width?: number; height?: number }
 }
 
 export interface SurgeryEntity {

@@ -34,6 +34,9 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   ThunderboltOutlined,
+  AudioOutlined,
+  ScissorOutlined,
+  MergeCellsOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import { recordApi, homePageApi } from '@/services/api'
@@ -51,6 +54,8 @@ const RecordDetail: React.FC = () => {
 
   const [record, setRecord] = useState<SurgeryRecord | null>(null)
   const [ocrText, setOcrText] = useState('')
+  const [asrText, setAsrText] = useState('')
+  const [activeTextTab, setActiveTextTab] = useState<'ocr' | 'asr'>('ocr')
   const [editingText, setEditingText] = useState('')
   const [isTextEditing, setIsTextEditing] = useState(false)
   const [entities, setEntities] = useState<SurgeryEntity[]>([])
@@ -76,8 +81,12 @@ const RecordDetail: React.FC = () => {
       ])
       setRecord(recordData)
       setOcrText(textData || '')
+      setAsrText(recordData?.asrText || '')
       setEditingText(textData || '')
       setEntities(entitiesData || [])
+      if (recordData?.asrText && !textData) {
+        setActiveTextTab('asr')
+      }
     } catch (e) {
       message.error('加载数据失败')
     } finally {
@@ -140,8 +149,13 @@ const RecordDetail: React.FC = () => {
     [entities, selectedEntityType]
   )
 
+  const displayText = useMemo(() => {
+    return activeTextTab === 'ocr' ? ocrText : asrText
+  }, [activeTextTab, ocrText, asrText])
+
   const highlightedText = useMemo(() => {
-    if (!ocrText || entities.length === 0) return ocrText
+    const text = displayText
+    if (!text || entities.length === 0) return text
 
     const sortedEntities = [...entities]
       .filter((e) => typeof e.startPos === 'number' && typeof e.endPos === 'number')
@@ -163,7 +177,7 @@ const RecordDetail: React.FC = () => {
 
       if (start > lastIndex) {
         result.push(
-          <span key={`text-${idx}`}>{ocrText.substring(lastIndex, start)}</span>
+          <span key={`text-${idx}`}>{text.substring(lastIndex, start)}</span>
         )
       }
 
@@ -228,7 +242,7 @@ const RecordDetail: React.FC = () => {
             }}
             onClick={() => openEntityEdit(entity)}
           >
-            {ocrText.substring(start, end)}
+            {text.substring(start, end)}
             <Tag
               color={entityInfo.color}
               style={{
@@ -249,12 +263,12 @@ const RecordDetail: React.FC = () => {
       lastIndex = end
     })
 
-    if (lastIndex < ocrText.length) {
-      result.push(<span key="text-end">{ocrText.substring(lastIndex)}</span>)
+    if (lastIndex < text.length) {
+      result.push(<span key="text-end">{text.substring(lastIndex)}</span>)
     }
 
-    return result.length > 0 ? result : ocrText
-  }, [ocrText, entities])
+    return result.length > 0 ? result : text
+  }, [displayText, entities])
 
   const entityStats = useMemo(() => {
     const stats = new Map<string, { total: number; verified: number; avgConfidence: number }>()
@@ -517,10 +531,8 @@ const RecordDetail: React.FC = () => {
             title={
               <Space>
                 <FileTextOutlined />
-                <span>OCR文本内容</span>
-                {isTextEditing && (
-                  <Tag color="orange">编辑中</Tag>
-                )}
+                <span>文本内容</span>
+                {isTextEditing && <Tag color="orange">编辑中</Tag>}
               </Space>
             }
             extra={
@@ -529,9 +541,10 @@ const RecordDetail: React.FC = () => {
                   <Button
                     icon={<EditOutlined />}
                     onClick={() => {
-                      setEditingText(ocrText)
+                      setEditingText(displayText)
                       setIsTextEditing(true)
                     }}
+                    disabled={!displayText}
                   >
                     编辑文本
                   </Button>
@@ -552,19 +565,54 @@ const RecordDetail: React.FC = () => {
             }
             loading={loading}
           >
+            {(asrText || ocrText) && (
+              <Tabs
+                activeKey={activeTextTab}
+                onChange={(k) => setActiveTextTab(k as 'ocr' | 'asr')}
+                style={{ marginBottom: 16 }}
+                size="small"
+              >
+                {ocrText && (
+                  <Tabs.TabPane
+                    tab={
+                      <span>
+                        <FileTextOutlined /> OCR文本
+                      </span>
+                    }
+                    key="ocr"
+                  />
+                )}
+                {asrText && (
+                  <Tabs.TabPane
+                    tab={
+                      <span>
+                        <AudioOutlined /> ASR语音转写
+                        {record?.audioDuration && (
+                          <Tag color="purple" style={{ marginLeft: 6 }}>
+                            {record.audioDuration.toFixed(0)}s
+                          </Tag>
+                        )}
+                      </span>
+                    }
+                    key="asr"
+                  />
+                )}
+              </Tabs>
+            )}
+
             {isTextEditing ? (
               <TextArea
                 value={editingText}
                 onChange={(e) => setEditingText(e.target.value)}
                 rows={20}
                 style={{ fontFamily: 'monospace', lineHeight: 1.8 }}
-                placeholder="请输入或粘贴OCR文本..."
+                placeholder="请输入或粘贴文本..."
               />
-            ) : ocrText ? (
+            ) : displayText ? (
               <div className="ocr-text-container">{highlightedText}</div>
             ) : (
               <div style={{ textAlign: 'center', padding: 40, color: '#8c8c8c' }}>
-                暂无OCR文本，请等待系统处理或手动编辑
+                暂无文本内容，请等待系统处理或手动编辑
               </div>
             )}
           </Card>
@@ -653,6 +701,106 @@ const RecordDetail: React.FC = () => {
               </>
             )}
           </Card>
+
+          {record?.instruments && record.instruments.length > 0 && (
+            <Card
+              title={
+                <Space>
+                  <ScissorOutlined />
+                  <span>手术器械识别</span>
+                  <Badge count={record.instruments.length} color="purple" />
+                </Space>
+              }
+              style={{ marginBottom: 16 }}
+              size="small"
+            >
+              <Space wrap size={[6, 6]}>
+                {record.instruments.map((inst, idx) => (
+                  <Tag
+                    key={idx}
+                    color="purple"
+                    style={{ padding: '4px 10px', fontSize: 13 }}
+                  >
+                    <Tooltip
+                      title={
+                        <div style={{ fontSize: 12 }}>
+                          <div>器械名称：{inst.instrumentName}</div>
+                          {inst.category && <div>分类：{inst.category}</div>}
+                          {typeof inst.confidence === 'number' && (
+                            <div>置信度：{(inst.confidence * 100).toFixed(1)}%</div>
+                          )}
+                          {inst.count && <div>数量：{inst.count}</div>}
+                        </div>
+                      }
+                    >
+                      {inst.instrumentName}
+                      {typeof inst.confidence === 'number' && (
+                        <span style={{ opacity: 0.7, marginLeft: 4 }}>
+                          {(inst.confidence * 100).toFixed(0)}%
+                        </span>
+                      )}
+                    </Tooltip>
+                  </Tag>
+                ))}
+              </Space>
+            </Card>
+          )}
+
+          {record?.multimodalStatus && record.multimodalStatus !== 'NONE' && (
+            <Card
+              title={
+                <Space>
+                  <MergeCellsOutlined />
+                  <span>多模态融合</span>
+                </Space>
+              }
+              size="small"
+            >
+              <Descriptions column={1} size="small">
+                <Descriptions.Item label="融合状态">
+                  {record.multimodalStatus === 'FUSED' && (
+                    <Tag color="green">融合成功</Tag>
+                  )}
+                  {record.multimodalStatus === 'FUSION_FAILED' && (
+                    <Tag color="orange">融合失败</Tag>
+                  )}
+                  {record.multimodalStatus === 'FUSION_ERROR' && (
+                    <Tag color="red">融合异常</Tag>
+                  )}
+                  {record.multimodalStatus === 'ASR_DONE' && (
+                    <Tag color="purple">语音已处理</Tag>
+                  )}
+                  {record.multimodalStatus === 'INSTRUMENT_DONE' && (
+                    <Tag color="cyan">器械已识别</Tag>
+                  )}
+                </Descriptions.Item>
+                {record.fusionStats && (
+                  <>
+                    {record.fusionStats.ocr_entity_count !== undefined && (
+                      <Descriptions.Item label="OCR实体数">
+                        {record.fusionStats.ocr_entity_count}
+                      </Descriptions.Item>
+                    )}
+                    {record.fusionStats.asr_entity_count !== undefined && (
+                      <Descriptions.Item label="ASR实体数">
+                        {record.fusionStats.asr_entity_count}
+                      </Descriptions.Item>
+                    )}
+                    {record.fusionStats.fused_entity_count !== undefined && (
+                      <Descriptions.Item label="融合后实体数">
+                        {record.fusionStats.fused_entity_count}
+                      </Descriptions.Item>
+                    )}
+                    {record.fusionStats.enhanced_text_length !== undefined && (
+                      <Descriptions.Item label="增强文本长度">
+                        {record.fusionStats.enhanced_text_length}
+                      </Descriptions.Item>
+                    )}
+                  </>
+                )}
+              </Descriptions>
+            </Card>
+          )}
         </Col>
       </Row>
 

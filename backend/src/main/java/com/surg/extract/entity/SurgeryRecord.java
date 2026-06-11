@@ -42,6 +42,25 @@ public class SurgeryRecord implements Serializable {
     @TableField(typeHandler = org.apache.ibatis.type.StringTypeHandler.class)
     private String processedText;
 
+    @TableField(typeHandler = org.apache.ibatis.type.StringTypeHandler.class)
+    private String asrText;
+
+    private Double audioDuration;
+
+    @TableField(typeHandler = org.apache.ibatis.type.StringTypeHandler.class)
+    private String asrSegments;
+
+    @TableField(typeHandler = org.apache.ibatis.type.StringTypeHandler.class)
+    private String enhancedText;
+
+    @TableField(typeHandler = org.apache.ibatis.type.StringTypeHandler.class)
+    private String instruments;
+
+    @TableField(typeHandler = org.apache.ibatis.type.StringTypeHandler.class)
+    private String fusionStats;
+
+    private String multimodalStatus;
+
     private Long uploadUserId;
 
     private String uploadUserName;

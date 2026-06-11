@@ -29,6 +29,8 @@ import {
   FileImageOutlined,
   FileTextOutlined,
   FileOutlined,
+  AudioOutlined,
+  VideoCameraOutlined,
   CheckCircleTwoTone,
   SyncOutlined,
 } from '@ant-design/icons'
@@ -119,6 +121,8 @@ const RecordList: React.FC = () => {
       WORD: <FileWordOutlined style={{ color: '#1890ff' }} />,
       PDF: <FilePdfOutlined style={{ color: '#f5222d' }} />,
       IMAGE: <FileImageOutlined style={{ color: '#52c41a' }} />,
+      AUDIO: <AudioOutlined style={{ color: '#722ed1' }} />,
+      VIDEO: <VideoCameraOutlined style={{ color: '#eb2f96' }} />,
       UNKNOWN: <FileOutlined style={{ color: '#8c8c8c' }} />,
     }
     return iconMap[type] || <FileOutlined />

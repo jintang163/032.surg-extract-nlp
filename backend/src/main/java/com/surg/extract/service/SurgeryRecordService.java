@@ -89,70 +89,146 @@ public class SurgeryRecordService {
             String filePath = record.getFilePath();
             if (filePath == null || filePath.isBlank()) {
                 log.error("手术记录文件路径为空: recordId={}", recordId);
-                surgeryRecordMapper.updateStatus(recordId, "FAILED", "文件路径为空，无法进行OCR处理");
+                surgeryRecordMapper.updateStatus(recordId, "FAILED", "文件路径为空，无法处理");
                 return;
             }
 
-            surgeryRecordMapper.updateStatus(recordId, "OCR_PROCESSING", null);
-            record.setOcrStartTime(LocalDateTime.now());
+            String fileType = record.getFileType();
+            boolean isVideo = "VIDEO".equalsIgnoreCase(fileType);
+            boolean isAudio = "AUDIO".equalsIgnoreCase(fileType);
+            boolean isImage = "IMAGE".equalsIgnoreCase(fileType);
+            boolean isDocument = "TEXT".equalsIgnoreCase(fileType)
+                    || "WORD".equalsIgnoreCase(fileType)
+                    || "PDF".equalsIgnoreCase(fileType);
 
-            NlpOcrResponse ocrResponse;
-            if ("TEXT".equalsIgnoreCase(record.getFileType())) {
-                ocrResponse = new NlpOcrResponse();
-                ocrResponse.setSuccess(true);
-                try {
-                    String text = new String(fileStorageService.loadFile(filePath));
-                    ocrResponse.setOcrText(text);
-                    ocrResponse.setProcessedText(text);
-                } catch (Exception e) {
-                    log.error("读取TEXT文件失败: recordId={}, path={}", recordId, filePath, e);
-                    ocrResponse.setSuccess(false);
-                    ocrResponse.setErrorMessage("读取TEXT文件失败: " + e.getMessage());
+            List<NerEntityDTO> allEntities = new ArrayList<>();
+            String ocrText = null;
+            String asrText = null;
+            String processedText = null;
+            String enhancedText = null;
+            List<DetectedInstrumentDTO> instruments = new ArrayList<>();
+
+            if (isDocument || isImage) {
+                surgeryRecordMapper.updateStatus(recordId, "OCR_PROCESSING", null);
+                record.setOcrStartTime(LocalDateTime.now());
+
+                NlpOcrResponse ocrResponse = processOcr(record, filePath, fileType);
+                record.setOcrEndTime(LocalDateTime.now());
+
+                if (!Boolean.TRUE.equals(ocrResponse.getSuccess())) {
+                    String errorMsg = ocrResponse.getErrorMessage() != null
+                            ? ocrResponse.getErrorMessage()
+                            : "OCR处理失败，未知错误";
+                    log.error("OCR处理失败: recordId={}, message={}", recordId, errorMsg);
+                    surgeryRecordMapper.updateStatus(recordId, "FAILED", "OCR处理失败: " + errorMsg);
+                    return;
                 }
-            } else {
-                NlpOcrRequest ocrRequest = new NlpOcrRequest();
-                ocrRequest.setRecordId(recordId);
-                ocrRequest.setFilePath(filePath);
-                ocrRequest.setFileType(record.getFileType());
+
+                if (ocrResponse.getOcrText() == null || ocrResponse.getOcrText().isBlank()) {
+                    log.warn("OCR识别结果为空: recordId={}", recordId);
+                    surgeryRecordMapper.updateStatus(recordId, "FAILED",
+                            "OCR识别结果为空，请上传清晰的手术记录文件");
+                    return;
+                }
+
+                ocrText = ocrResponse.getOcrText();
+                processedText = ocrResponse.getProcessedText();
+
+                record.setOcrText(ocrText);
+                record.setProcessedText(processedText);
+                surgeryRecordMapper.updateOcrTime(recordId, record.getOcrStartTime(), record.getOcrEndTime());
+                surgeryRecordMapper.updateById(record);
+            }
+
+            if (isVideo || isAudio) {
+                surgeryRecordMapper.updateStatus(recordId, "ASR_PROCESSING", null);
+
+                AsrProcessRequestDTO asrRequest = new AsrProcessRequestDTO();
+                asrRequest.setRecordId(recordId);
+                asrRequest.setFilePath(filePath);
+                asrRequest.setFileType(fileType);
+                asrRequest.setLanguage("zh");
+
+                AsrProcessResponseDTO asrResponse;
                 try {
-                    ocrResponse = nlpServiceClient.processOcrByFilePath(ocrRequest);
+                    asrResponse = nlpServiceClient.processAsrByFilePath(asrRequest);
                 } catch (Exception e) {
-                    log.error("调用NLP OCR服务失败: recordId={}", recordId, e);
-                    ocrResponse = new NlpOcrResponse();
-                    ocrResponse.setSuccess(false);
-                    ocrResponse.setErrorMessage("NLP OCR服务调用失败: " + e.getMessage());
+                    log.error("调用ASR服务失败: recordId={}", recordId, e);
+                    surgeryRecordMapper.updateStatus(recordId, "FAILED",
+                            "语音识别服务调用失败: " + e.getMessage());
+                    return;
+                }
+
+                if (!Boolean.TRUE.equals(asrResponse.getSuccess())) {
+                    String errorMsg = asrResponse.getErrorMessage() != null
+                            ? asrResponse.getErrorMessage()
+                            : "语音识别失败，未知错误";
+                    log.error("ASR处理失败: recordId={}, message={}", recordId, errorMsg);
+                    surgeryRecordMapper.updateStatus(recordId, "FAILED", "语音识别失败: " + errorMsg);
+                    return;
+                }
+
+                asrText = asrResponse.getFullText();
+                if (asrText == null || asrText.isBlank()) {
+                    log.warn("ASR识别结果为空: recordId={}", recordId);
+                    surgeryRecordMapper.updateStatus(recordId, "FAILED",
+                            "语音识别结果为空，请确认文件中有语音内容");
+                    return;
+                }
+
+                record.setAsrText(asrText);
+                record.setAudioDuration(asrResponse.getDuration());
+                if (asrResponse.getSegments() != null) {
+                    try {
+                        record.setAsrSegments(objectMapper.writeValueAsString(asrResponse.getSegments()));
+                    } catch (JsonProcessingException e) {
+                        log.warn("序列化ASR分段失败: {}", e.getMessage());
+                    }
+                }
+                processedText = asrText;
+                record.setProcessedText(asrText);
+                surgeryRecordMapper.updateById(record);
+            }
+
+            if (isImage) {
+                try {
+                    InstrumentRecognitionRequestDTO instrRequest = new InstrumentRecognitionRequestDTO();
+                    instrRequest.setRecordId(recordId);
+                    instrRequest.setFilePath(filePath);
+                    instrRequest.setMode("hybrid");
+                    instrRequest.setConfidenceThreshold(0.3);
+
+                    InstrumentRecognitionResponseDTO instrResponse =
+                            nlpServiceClient.recognizeInstrumentByFilePath(instrRequest);
+
+                    if (Boolean.TRUE.equals(instrResponse.getSuccess())
+                            && instrResponse.getInstruments() != null
+                            && !instrResponse.getInstruments().isEmpty()) {
+                        instruments = instrResponse.getInstruments();
+                        try {
+                            record.setInstruments(objectMapper.writeValueAsString(instruments));
+                        } catch (JsonProcessingException e) {
+                            log.warn("序列化器械列表失败: {}", e.getMessage());
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("器械识别失败，将继续处理: recordId={}, error={}", recordId, e.getMessage());
                 }
             }
-
-            record.setOcrEndTime(LocalDateTime.now());
-
-            if (!Boolean.TRUE.equals(ocrResponse.getSuccess())) {
-                String errorMsg = ocrResponse.getErrorMessage() != null
-                        ? ocrResponse.getErrorMessage()
-                        : "OCR处理失败，未知错误";
-                log.error("OCR处理失败: recordId={}, message={}", recordId, errorMsg);
-                surgeryRecordMapper.updateStatus(recordId, "FAILED", "OCR处理失败: " + errorMsg);
-                return;
-            }
-
-            if (ocrResponse.getOcrText() == null || ocrResponse.getOcrText().isBlank()) {
-                log.warn("OCR识别结果为空: recordId={}", recordId);
-                surgeryRecordMapper.updateStatus(recordId, "FAILED",
-                        "OCR识别结果为空，请上传清晰的手术记录文件");
-                return;
-            }
-
-            record.setOcrText(ocrResponse.getOcrText());
-            record.setProcessedText(ocrResponse.getProcessedText());
-            surgeryRecordMapper.updateOcrTime(recordId, record.getOcrStartTime(), record.getOcrEndTime());
-            surgeryRecordMapper.updateById(record);
 
             surgeryRecordMapper.updateStatus(recordId, "NER_PROCESSING", null);
             record.setNerStartTime(LocalDateTime.now());
 
+            String nerInputText = processedText;
+            if (nerInputText == null || nerInputText.isBlank()) {
+                log.error("NER输入文本为空: recordId={}", recordId);
+                surgeryRecordMapper.updateStatus(recordId, "FAILED", "实体抽取失败：没有有效文本");
+                return;
+            }
+
             NlpNerRequest nerRequest = new NlpNerRequest();
             nerRequest.setRecordId(recordId);
-            nerRequest.setText(record.getProcessedText());
+            nerRequest.setText(nerInputText);
             NlpNerResponse nerResponse;
             try {
                 nerResponse = nlpServiceClient.extractEntities(nerRequest);
@@ -174,19 +250,101 @@ public class SurgeryRecordService {
                 return;
             }
 
-            saveEntities(recordId, nerResponse.getEntities());
-            autoFillHomePage(recordId, nerResponse.getEntities());
+            if (nerResponse.getEntities() != null) {
+                allEntities.addAll(nerResponse.getEntities());
+            }
+
+            boolean hasMultimodal = (ocrText != null && asrText != null) || !instruments.isEmpty();
+            if (hasMultimodal) {
+                try {
+                    MultimodalFusionRequestDTO fusionRequest = new MultimodalFusionRequestDTO();
+                    fusionRequest.setRecordId(recordId);
+                    fusionRequest.setOcrText(ocrText);
+                    if (asrText != null) {
+                        Map<String, Object> asrResultMap = new HashMap<>();
+                        asrResultMap.put("success", true);
+                        asrResultMap.put("full_text", asrText);
+                        asrResultMap.put("duration", record.getAudioDuration());
+                        fusionRequest.setAsrResult(asrResultMap);
+                    }
+                    if (!instruments.isEmpty()) {
+                        Map<String, Object> instrResultMap = new HashMap<>();
+                        instrResultMap.put("success", true);
+                        instrResultMap.put("instruments", instruments);
+                        fusionRequest.setInstrumentResult(instrResultMap);
+                    }
+                    fusionRequest.setNerEntities(nerResponse.getEntities());
+
+                    MultimodalFusionResponseDTO fusionResponse =
+                            nlpServiceClient.fuseMultimodal(fusionRequest);
+
+                    if (Boolean.TRUE.equals(fusionResponse.getSuccess())) {
+                        allEntities = fusionResponse.getEntities();
+                        enhancedText = fusionResponse.getEnhancedText();
+                        record.setEnhancedText(enhancedText);
+                        if (fusionResponse.getFusionStats() != null) {
+                            try {
+                                record.setFusionStats(objectMapper.writeValueAsString(fusionResponse.getFusionStats()));
+                            } catch (JsonProcessingException e) {
+                                log.warn("序列化融合统计失败: {}", e.getMessage());
+                            }
+                        }
+                        record.setMultimodalStatus("FUSED");
+                    } else {
+                        record.setMultimodalStatus("FUSION_FAILED");
+                        log.warn("多模态融合失败，将使用原始NER结果: {}", fusionResponse.getErrorMessage());
+                    }
+                } catch (Exception e) {
+                    record.setMultimodalStatus("FUSION_ERROR");
+                    log.warn("多模态融合异常，将使用原始NER结果: {}", e.getMessage());
+                }
+            }
+
+            saveEntities(recordId, allEntities);
+            autoFillHomePage(recordId, allEntities);
 
             record.setNerStartTime(record.getNerStartTime());
             record.setNerEndTime(record.getNerEndTime());
             surgeryRecordMapper.updateNerTime(recordId, record.getNerStartTime(), record.getNerEndTime());
+            surgeryRecordMapper.updateById(record);
             surgeryRecordMapper.updateStatus(recordId, "NER_DONE", "处理完成");
 
-            log.info("手术记录处理完成: recordId={}", recordId);
+            log.info("手术记录处理完成: recordId={}, 实体数={}", recordId, allEntities.size());
         } catch (Exception e) {
             log.error("处理手术记录异常: recordId={}", recordId, e);
             surgeryRecordMapper.updateStatus(recordId, "FAILED", "处理异常: " + e.getMessage());
         }
+    }
+
+    private NlpOcrResponse processOcr(SurgeryRecord record, String filePath, String fileType) {
+        NlpOcrResponse ocrResponse;
+        if ("TEXT".equalsIgnoreCase(fileType)) {
+            ocrResponse = new NlpOcrResponse();
+            ocrResponse.setSuccess(true);
+            try {
+                String text = new String(fileStorageService.loadFile(filePath));
+                ocrResponse.setOcrText(text);
+                ocrResponse.setProcessedText(text);
+            } catch (Exception e) {
+                log.error("读取TEXT文件失败: recordId={}, path={}", record.getId(), filePath, e);
+                ocrResponse.setSuccess(false);
+                ocrResponse.setErrorMessage("读取TEXT文件失败: " + e.getMessage());
+            }
+        } else {
+            NlpOcrRequest ocrRequest = new NlpOcrRequest();
+            ocrRequest.setRecordId(record.getId());
+            ocrRequest.setFilePath(filePath);
+            ocrRequest.setFileType(fileType);
+            try {
+                ocrResponse = nlpServiceClient.processOcrByFilePath(ocrRequest);
+            } catch (Exception e) {
+                log.error("调用NLP OCR服务失败: recordId={}", record.getId(), e);
+                ocrResponse = new NlpOcrResponse();
+                ocrResponse.setSuccess(false);
+                ocrResponse.setErrorMessage("NLP OCR服务调用失败: " + e.getMessage());
+            }
+        }
+        return ocrResponse;
     }
 
     @Transactional(rollbackFor = Exception.class)

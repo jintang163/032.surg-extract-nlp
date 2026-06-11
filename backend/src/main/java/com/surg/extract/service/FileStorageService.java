@@ -85,7 +85,9 @@ public class FileStorageService {
             case "txt" -> "TEXT";
             case "doc", "docx" -> "WORD";
             case "pdf" -> "PDF";
-            case "png", "jpg", "jpeg", "gif", "bmp", "tiff" -> "IMAGE";
+            case "png", "jpg", "jpeg", "gif", "bmp", "tiff", "tif" -> "IMAGE";
+            case "mp3", "wav", "m4a", "flac", "aac", "ogg", "wma", "aiff" -> "AUDIO";
+            case "mp4", "avi", "mov", "mkv", "flv", "wmv", "webm", "m4v", "3gp" -> "VIDEO";
             default -> "UNKNOWN";
         };
     }
