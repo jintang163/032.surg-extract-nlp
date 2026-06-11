@@ -1,32 +1,49 @@
 import os
 import re
 import io
-import shutil
-import tempfile
 from loguru import logger
 from typing import Optional, Tuple
 from pathlib import Path
 
+
+class OcrDependencyError(Exception):
+    def __init__(self, message: str, detail: str = ""):
+        super().__init__(message)
+        self.detail = detail
+
+
+class OcrProcessingError(Exception):
+    def __init__(self, message: str, stage: str = "unknown", detail: str = ""):
+        super().__init__(message)
+        self.stage = stage
+        self.detail = detail
+
+
 try:
     from PIL import Image
+except ImportError:
+    Image = None
+
+try:
     import pytesseract
 except ImportError:
-    logger.warning("OCR相关依赖未安装，OCR功能将使用Mock实现")
+    pytesseract = None
 
 try:
     from pdf2image import convert_from_bytes, convert_from_path
 except ImportError:
-    logger.warning("pdf2image未安装，PDF转图片功能受限")
+    convert_from_bytes = None
+    convert_from_path = None
 
 try:
     import pdfplumber
 except ImportError:
-    logger.warning("pdfplumber未安装")
+    pdfplumber = None
 
 try:
     from docx import Document
 except ImportError:
-    logger.warning("python-docx未安装")
+    Document = None
 
 from app.config import get_settings
 
@@ -36,51 +53,163 @@ class OcrService:
         self.settings = get_settings()
         self._ensure_dirs()
         self._setup_tesseract()
+        self._check_dependencies()
 
     def _ensure_dirs(self):
         for d in [self.settings.upload_dir, self.settings.temp_dir, self.settings.output_dir]:
             Path(d).mkdir(parents=True, exist_ok=True)
 
     def _setup_tesseract(self):
-        try:
-            pytesseract.pytesseract.tesseract_cmd = self.settings.tesseract_cmd
-        except Exception:
-            logger.warning("Tesseract配置失败，将使用Mock OCR")
+        if pytesseract is not None:
+            try:
+                pytesseract.pytesseract.tesseract_cmd = self.settings.tesseract_cmd
+            except Exception as e:
+                logger.warning(f"Tesseract配置失败: {e}")
 
-    def process_file(self, file_content: bytes, filename: str, file_type: Optional[str] = None) -> Tuple[str, str]:
+    def _check_dependencies(self):
+        missing = []
+        if pytesseract is None:
+            missing.append("pytesseract")
+        if Image is None:
+            missing.append("Pillow")
+        if missing:
+            logger.warning(
+                f"以下OCR相关依赖未安装，OCR功能不可用: {', '.join(missing)}. "
+                f"请执行: pip install pytesseract Pillow pdf2image pdfplumber python-docx "
+                f"并安装Tesseract-OCR引擎"
+            )
+
+    def _ensure_ocr_dependencies(self):
+        missing = []
+        if pytesseract is None:
+            missing.append("pytesseract")
+        if Image is None:
+            missing.append("Pillow")
+        if missing:
+            raise OcrDependencyError(
+                f"OCR功能依赖未安装: {', '.join(missing)}",
+                detail="请执行 pip install pytesseract Pillow 并安装 Tesseract-OCR 引擎"
+            )
+
+    def process_file(
+        self, file_content: bytes, filename: str, file_type: Optional[str] = None
+    ) -> Tuple[str, str]:
         logger.info(f"开始处理文件: {filename}, type={file_type}")
+
+        if file_content is None or len(file_content) == 0:
+            raise OcrProcessingError(
+                "文件内容为空",
+                stage="input_validation",
+                detail="上传的文件没有内容，请检查文件是否损坏"
+            )
+
         if not file_type:
             file_type = self._detect_file_type(filename)
 
         try:
             raw_text = self._extract_text(file_content, filename, file_type)
-            processed_text = self._preprocess_text(raw_text)
-            logger.info(f"OCR处理完成: 原始长度={len(raw_text)}, 处理后长度={len(processed_text)}")
-            return raw_text, processed_text
+        except OcrProcessingError:
+            raise
+        except OcrDependencyError:
+            raise
         except Exception as e:
-            logger.error(f"OCR处理失败: {e}", exc_info=True)
-            mock_text = self._get_mock_text()
-            return mock_text, self._preprocess_text(mock_text)
+            logger.error(f"文本提取失败: {filename}, {e}", exc_info=True)
+            raise OcrProcessingError(
+                f"文本提取失败: {str(e)}",
+                stage="text_extraction",
+                detail=str(e)
+            )
+
+        if not raw_text or len(raw_text.strip()) == 0:
+            raise OcrProcessingError(
+                "未识别到有效文本内容",
+                stage="text_extraction",
+                detail="OCR识别结果为空，请上传更清晰的文档扫描件或使用可编辑的Word/PDF文件"
+            )
+
+        try:
+            processed_text = self._preprocess_text(raw_text)
+        except Exception as e:
+            logger.warning(f"文本预处理失败，使用原始文本: {e}")
+            processed_text = raw_text
+
+        logger.info(
+            f"OCR处理完成: 原始长度={len(raw_text)}, 处理后长度={len(processed_text)}"
+        )
+        return raw_text, processed_text
+
+    def process_file_by_path(
+        self, file_path: str, file_type: Optional[str] = None
+    ) -> Tuple[str, str]:
+        logger.info(f"通过文件路径处理: {file_path}, type={file_type}")
+
+        if not file_path or not os.path.exists(file_path):
+            raise OcrProcessingError(
+                f"文件不存在: {file_path}",
+                stage="file_validation",
+                detail=f"无法在路径 {file_path} 找到文件"
+            )
+
+        try:
+            file_size = os.path.getsize(file_path)
+            if file_size == 0:
+                raise OcrProcessingError(
+                    "文件大小为0字节",
+                    stage="file_validation",
+                    detail="上传的文件为空，请检查"
+                )
+            if file_size > 100 * 1024 * 1024:
+                raise OcrProcessingError(
+                    f"文件过大: {file_size / 1024 / 1024:.2f}MB，最大支持100MB",
+                    stage="file_validation"
+                )
+        except OcrProcessingError:
+            raise
+        except Exception as e:
+            raise OcrProcessingError(
+                f"读取文件元信息失败: {str(e)}",
+                stage="file_validation",
+                detail=str(e)
+            )
+
+        filename = os.path.basename(file_path)
+        if not file_type:
+            file_type = self._detect_file_type(filename)
+
+        try:
+            with open(file_path, "rb") as f:
+                file_content = f.read()
+        except Exception as e:
+            raise OcrProcessingError(
+                f"读取文件失败: {str(e)}",
+                stage="file_read",
+                detail=str(e)
+            )
+
+        return self.process_file(file_content, filename, file_type)
 
     def _extract_text(self, file_content: bytes, filename: str, file_type: str) -> str:
-        file_type = file_type.upper() if file_type else ""
+        file_type = (file_type or "").upper()
 
-        if file_type == "TEXT" or filename.endswith(".txt"):
-            try:
-                return file_content.decode("utf-8")
-            except UnicodeDecodeError:
-                return file_content.decode("gbk", errors="ignore")
+        if file_type == "TEXT" or filename.lower().endswith(".txt"):
+            return self._extract_from_text(file_content)
 
-        if file_type == "WORD" or filename.endswith((".doc", ".docx")):
+        if file_type == "WORD" or filename.lower().endswith((".doc", ".docx")):
             return self._extract_from_docx(file_content, filename)
 
-        if file_type == "PDF" or filename.endswith(".pdf"):
-            return self._extract_from_pdf(file_content)
+        if file_type == "PDF" or filename.lower().endswith(".pdf"):
+            return self._extract_from_pdf(file_content, filename)
 
-        if file_type == "IMAGE" or filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff")):
-            return self._extract_from_image(file_content)
+        if file_type == "IMAGE" or filename.lower().endswith(
+            (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif")
+        ):
+            return self._extract_from_image(file_content, filename)
 
-        raise ValueError(f"不支持的文件类型: {file_type}, filename: {filename}")
+        raise OcrProcessingError(
+            f"不支持的文件类型: {file_type} (文件: {filename})",
+            stage="file_type_detection",
+            detail="支持的格式: txt, doc, docx, pdf, png, jpg, jpeg, gif, bmp, tiff"
+        )
 
     def _detect_file_type(self, filename: str) -> str:
         ext = filename.split(".")[-1].lower() if "." in filename else ""
@@ -90,66 +219,186 @@ class OcrService:
             return "WORD"
         if ext == "pdf":
             return "PDF"
-        if ext in ("png", "jpg", "jpeg", "gif", "bmp", "tiff"):
+        if ext in ("png", "jpg", "jpeg", "gif", "bmp", "tiff", "tif"):
             return "IMAGE"
         return "UNKNOWN"
 
+    def _extract_from_text(self, file_content: bytes) -> str:
+        encoding_candidates = ["utf-8", "utf-8-sig", "gbk", "gb2312", "gb18030", "latin-1"]
+        last_error = None
+        for encoding in encoding_candidates:
+            try:
+                text = file_content.decode(encoding)
+                logger.debug(f"使用编码 {encoding} 解析TEXT文件成功")
+                return text
+            except UnicodeDecodeError as e:
+                last_error = e
+                continue
+        raise OcrProcessingError(
+            "无法识别文本文件编码",
+            stage="text_decode",
+            detail=f"尝试的编码: {encoding_candidates}, 最后错误: {last_error}"
+        )
+
     def _extract_from_docx(self, file_content: bytes, filename: str) -> str:
+        if Document is None:
+            raise OcrDependencyError(
+                "python-docx 未安装，无法解析Word文档",
+                detail="请执行: pip install python-docx"
+            )
+
         try:
             doc = Document(io.BytesIO(file_content))
-            paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-            tables_text = []
+        except Exception as e:
+            raise OcrProcessingError(
+                f"Word文档解析失败: {str(e)}",
+                stage="docx_parse",
+                detail="可能是文件格式不兼容或文件已损坏，请尝试转换为其他格式"
+            )
+
+        paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+        tables_text = []
+        try:
             for table in doc.tables:
                 for row in table.rows:
                     row_text = [cell.text.strip() for cell in row.cells]
                     tables_text.append(" | ".join(row_text))
-            return "\n".join(paragraphs + tables_text)
         except Exception as e:
-            logger.warning(f"Word解析失败，尝试Mock: {e}")
-            return self._get_mock_text()
+            logger.warning(f"提取Word表格失败，跳过表格内容: {e}")
 
-    def _extract_from_pdf(self, file_content: bytes) -> str:
+        result = "\n".join(paragraphs + tables_text)
+        if not result.strip():
+            logger.warning(f"Word文档 {filename} 未提取到任何文本内容")
+        return result
+
+    def _extract_from_pdf(self, file_content: bytes, filename: str) -> str:
         texts = []
-        try:
-            with pdfplumber.open(io.BytesIO(file_content)) as pdf:
-                for page in pdf.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        texts.append(page_text)
-            if texts:
-                return "\n\n".join(texts)
-        except Exception as e:
-            logger.warning(f"PDF文本提取失败，尝试OCR: {e}")
+
+        if pdfplumber is not None:
+            try:
+                with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+                    for idx, page in enumerate(pdf.pages):
+                        try:
+                            page_text = page.extract_text()
+                            if page_text and page_text.strip():
+                                texts.append(page_text.strip())
+                            else:
+                                logger.debug(f"PDF第{idx + 1}页未提取到文本，将尝试OCR")
+                        except Exception as e:
+                            logger.warning(f"PDF第{idx + 1}页文本提取失败: {e}")
+            except Exception as e:
+                logger.warning(f"PDF文本层提取失败，将使用OCR: {e}")
+
+        if texts and sum(len(t.strip()) for t in texts) >= 50:
+            logger.info(f"PDF文本层提取成功: {len(texts)}页")
+            return "\n\n".join(texts)
+
+        self._ensure_ocr_dependencies()
+        if convert_from_bytes is None:
+            raise OcrDependencyError(
+                "pdf2image 未安装，无法将PDF转为图片进行OCR",
+                detail="请执行: pip install pdf2image 并安装 poppler"
+            )
 
         try:
-            images = convert_from_bytes(file_content)
-            for img in images:
-                img_text = self._ocr_image(img)
-                texts.append(img_text)
+            images = convert_from_bytes(file_content, dpi=300)
+            logger.info(f"PDF转图片OCR: 共{len(images)}页")
         except Exception as e:
-            logger.warning(f"PDF转图片OCR失败: {e}")
-            return self._get_mock_text()
+            raise OcrProcessingError(
+                f"PDF转图片失败: {str(e)}",
+                stage="pdf_to_image",
+                detail="请确认已安装Poppler，或上传更小的PDF文件"
+            )
 
-        return "\n\n".join(texts) if texts else self._get_mock_text()
+        ocr_results = []
+        for idx, img in enumerate(images):
+            try:
+                page_text = self._ocr_image(img)
+                if page_text and page_text.strip():
+                    ocr_results.append(page_text.strip())
+            except Exception as e:
+                logger.warning(f"PDF第{idx + 1}页OCR失败: {e}")
+                continue
 
-    def _extract_from_image(self, file_content: bytes) -> str:
+        if not ocr_results:
+            raise OcrProcessingError(
+                "PDF OCR识别失败，未提取到有效文本",
+                stage="pdf_ocr",
+                detail="请确认PDF文件为清晰的扫描件，或上传可编辑的PDF版本"
+            )
+
+        return "\n\n".join(ocr_results)
+
+    def _extract_from_image(self, file_content: bytes, filename: str) -> str:
+        self._ensure_ocr_dependencies()
+
         try:
             img = Image.open(io.BytesIO(file_content))
-            return self._ocr_image(img)
+            img.verify()
+            img = Image.open(io.BytesIO(file_content))
         except Exception as e:
-            logger.warning(f"图片OCR失败: {e}")
-            return self._get_mock_text()
+            raise OcrProcessingError(
+                f"图片加载失败: {str(e)}",
+                stage="image_load",
+                detail="图片文件可能已损坏，或格式不受支持"
+            )
 
-    def _ocr_image(self, image: "Image.Image") -> str:
+        if img.mode != "RGB":
+            try:
+                img = img.convert("RGB")
+            except Exception as e:
+                logger.warning(f"图片格式转换失败，继续尝试OCR: {e}")
+
         try:
-            return pytesseract.image_to_string(
+            text = self._ocr_image(img)
+        except Exception as e:
+            raise OcrProcessingError(
+                f"图片OCR识别失败: {str(e)}",
+                stage="image_ocr",
+                detail=str(e)
+            )
+
+        if not text or len(text.strip()) < 5:
+            raise OcrProcessingError(
+                "图片OCR未识别到足够的文字内容",
+                stage="image_ocr",
+                detail="请上传更清晰的手术记录扫描件或照片，确保文字可辨认"
+            )
+
+        return text
+
+    def _ocr_image(self, image) -> str:
+        self._ensure_ocr_dependencies()
+
+        try:
+            config = "--psm 6"
+            text = pytesseract.image_to_string(
                 image,
                 lang=self.settings.tesseract_lang,
-                config="--psm 6"
+                config=config,
+            )
+        except pytesseract.TesseractNotFoundError:
+            raise OcrDependencyError(
+                "Tesseract-OCR 引擎未安装或路径未配置",
+                detail="请安装Tesseract-OCR，并设置环境变量或在配置中指定 tesseract_cmd 路径"
+            )
+        except pytesseract.TesseractError as e:
+            raise OcrProcessingError(
+                f"Tesseract OCR 执行失败: {e.message}",
+                stage="tesseract_exec",
+                detail=f"status={e.status}, message={e.message}"
             )
         except Exception as e:
-            logger.warning(f"Tesseract OCR失败: {e}")
-            return self._get_mock_text()
+            raise OcrProcessingError(
+                f"OCR识别异常: {str(e)}",
+                stage="tesseract_exec",
+                detail=str(e)
+            )
+
+        if not isinstance(text, str):
+            text = str(text)
+
+        return text
 
     def _preprocess_text(self, text: str) -> str:
         if not text:
@@ -160,6 +409,7 @@ class OcrService:
         for line in lines:
             line = line.strip()
             if not line:
+                cleaned_lines.append("")
                 continue
             line = self._remove_noise(line)
             if line:
@@ -168,78 +418,36 @@ class OcrService:
         cleaned_text = "\n".join(cleaned_lines)
         cleaned_text = re.sub(r"\n{3,}", "\n\n", cleaned_text)
         cleaned_text = re.sub(r"[ \t]{2,}", " ", cleaned_text)
+        cleaned_text = re.sub(r"\u3000", " ", cleaned_text)
 
         return cleaned_text.strip()
 
     def _remove_noise(self, line: str) -> str:
         noise_patterns = [
-            r"^[-_=]{3,}$",
-            r"第\s*\d+\s*页\s*[共/｜丨/|]\s*\d+\s*页",
-            r"Page\s*\d+\s*of\s*\d+",
-            r"打印时间[:：].*",
-            r"录入时间[:：].*",
-            r"医院名称[:：].*",
-            r"^[\|│┃┄┅━┃]{2,}",
-            r"[\|│┃┄┅━┃]",
-            r"\s{2,}",
+            (r"^[-_=\*·•]{3,}$", ""),
+            (r"第\s*\d+\s*页\s*[共/｜丨/|/\\]\s*\d+\s*页", ""),
+            (r"第\s*\d+\s*/\s*\d+\s*页", ""),
+            (r"Page\s*\d+\s*of\s*\d+", "", True),
+            (r"P\.?\s*\d+\s*[/／]\s*\d+", "", True),
+            (r"打印时间\s*[:：].*", ""),
+            (r"录入时间\s*[:：].*", ""),
+            (r"审核时间\s*[:：].*", ""),
+            (r"记录时间\s*[:：].*", ""),
+            (r"医院名称\s*[:：].*", ""),
+            (r"病历号\s*[:：].*", "", True),
+            (r"^[\|│┃┄┅━┃┆┇┊┋]{2,}", ""),
+            (r"[\|│┃┄┅━┃┆┇┊┋]", " "),
+            (r"\s{2,}", " "),
         ]
-        for pattern in noise_patterns:
-            line = re.sub(pattern, " ", line)
+
+        for item in noise_patterns:
+            pattern = item[0]
+            repl = item[1]
+            ignore_case = item[2] if len(item) > 2 else False
+            flags = re.IGNORECASE if ignore_case else 0
+            try:
+                line = re.sub(pattern, repl, line, flags=flags)
+            except re.error:
+                continue
+
         return line.strip()
-
-    def _get_mock_text(self) -> str:
-        return """
-XX医院 手术记录
-
-姓名：张三
-性别：男
-年龄：56岁
-住院号：ZY20240115001
-科室：普外科
-床号：1203
-入院日期：2024-01-10
-手术日期：2024-01-15 09:30
-
-手术名称：腹腔镜阑尾切除术
-手术等级：三级
-切口分类：Ⅱ类
-切口等级：Ⅱ类
-
-麻醉方式：全身麻醉（气管插管）
-麻醉医师：陈明医生
-
-术者：李建国主任
-助手：王伟医生、赵亮医生
-器械护士：刘芳护士
-巡回护士：陈静护士
-
-术前诊断：急性化脓性阑尾炎
-术后诊断：急性化脓性阑尾炎伴穿孔
-
-手术经过：
-患者仰卧位，全麻诱导成功后气管插管，常规消毒铺巾。
-脐上缘作弧形切口约10mm，建立气腹，压力维持12mmHg。
-置入腹腔镜探查：见腹腔内脓性渗液约200ml，阑尾位于右下腹，明显充血肿胀，
-根部可见穿孔，直径约0.5cm。吸净腹腔渗液。
-于麦氏点及左下腹分别作5mm操作孔，置入操作器械。
-分离阑尾周围粘连，游离阑尾系膜，双重结扎后切断。
-阑尾根部双重结扎加缝扎后切断，残端粘膜电凝处理。
-阑尾装入标本袋经脐部切口取出。
-大量生理盐水冲洗腹腔至冲洗液清亮。
-探查无活动性出血，清点器械纱布无误。
-于右下腹放置引流管一根经左下腹穿刺孔引出固定。
-缝合各切口，无菌敷料包扎。
-
-术中情况：
-出血量：约150ml
-输血量：0ml
-输液量：2500ml
-尿量：800ml
-血压波动于120-150/70-90mmHg，心率70-90次/分
-术中并发症：无
-
-手术顺利，麻醉效果满意，术毕患者安返病房。
-
-记录者：李建国
-记录时间：2024-01-15 12:30
-"""

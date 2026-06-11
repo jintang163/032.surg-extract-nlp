@@ -113,13 +113,60 @@ class NerExtractService:
             }
         except Exception as e:
             logger.error(f"OCR处理失败: {e}", exc_info=True)
+            error_msg = self._format_ocr_error(e)
             return {
                 "success": False,
                 "ocr_text": None,
                 "processed_text": None,
-                "error_message": str(e),
+                "error_message": error_msg,
                 "processing_time_ms": int((time.time() - start_time) * 1000)
             }
+
+    def process_ocr_by_path(self, file_path: str, file_type: str = None) -> Dict[str, Any]:
+        start_time = time.time()
+
+        try:
+            raw_text, processed_text = self.ocr_service.process_file_by_path(
+                file_path, file_type
+            )
+            processed_text = self.preprocessor.clean_text(processed_text)
+
+            elapsed = int((time.time() - start_time) * 1000)
+            return {
+                "success": True,
+                "ocr_text": raw_text,
+                "processed_text": processed_text,
+                "error_message": None,
+                "processing_time_ms": elapsed
+            }
+        except Exception as e:
+            logger.error(f"OCR按路径处理失败: {e}", exc_info=True)
+            error_msg = self._format_ocr_error(e)
+            return {
+                "success": False,
+                "ocr_text": None,
+                "processed_text": None,
+                "error_message": error_msg,
+                "processing_time_ms": int((time.time() - start_time) * 1000)
+            }
+
+    def _format_ocr_error(self, e: Exception) -> str:
+        try:
+            from app.services.ocr_service import OcrProcessingError, OcrDependencyError
+            if isinstance(e, OcrDependencyError):
+                msg = f"[OCR依赖缺失] {str(e)}"
+                if hasattr(e, 'detail') and e.detail:
+                    msg = f"{msg}。详情: {e.detail}"
+                return msg
+            if isinstance(e, OcrProcessingError):
+                stage = getattr(e, 'stage', 'unknown')
+                msg = f"[OCR失败-{stage}] {str(e)}"
+                if hasattr(e, 'detail') and e.detail:
+                    msg = f"{msg}。详情: {e.detail}"
+                return msg
+        except Exception:
+            pass
+        return f"OCR处理失败: {str(e)}"
 
     def extract_entities(self, text: str, record_id: int = None) -> Dict[str, Any]:
         start_time = time.time()

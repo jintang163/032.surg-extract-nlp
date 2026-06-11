@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import sys
 import numpy as np
 from loguru import logger
 from typing import List, Dict, Any, Optional
@@ -11,222 +12,180 @@ from app.config import get_settings
 ENTITY_LABELS = [
     "O",
     "B-PATIENT_NAME", "I-PATIENT_NAME",
-    "B-HOSPITAL_NO", "I-HOSPITAL_NO",
-    "B-SURGERY_DATE", "I-SURGERY_DATE",
-    "B-SURGERY_NAME", "I-SURGERY_NAME",
-    "B-INCISION_LEVEL", "I-INCISION_LEVEL",
-    "B-ANESTHESIA_TYPE", "I-ANESTHESIA_TYPE",
-    "B-BLOOD_LOSS", "I-BLOOD_LOSS",
-    "B-BLOOD_TRANSFUSION", "I-BLOOD_TRANSFUSION",
-    "B-COMPLICATION", "I-COMPLICATION",
-    "B-SURGEON", "I-SURGEON",
-    "B-ASSISTANT", "I-ASSISTANT",
-    "B-ANESTHESIOLOGIST", "I-ANESTHESIOLOGIST",
-    "B-FLUID_INFUSION", "I-FLUID_INFUSION",
-    "B-DEPARTMENT", "I-DEPARTMENT",
-    "B-SURGERY_LEVEL", "I-SURGERY_LEVEL",
     "B-GENDER", "I-GENDER",
     "B-AGE", "I-AGE",
+    "B-HOSPITAL_NO", "I-HOSPITAL_NO",
+    "B-DEPARTMENT", "I-DEPARTMENT",
+    "B-SURGERY_DATE", "I-SURGERY_DATE",
+    "B-SURGERY_NAME", "I-SURGERY_NAME",
+    "B-SURGERY_NAME_ALT", "I-SURGERY_NAME_ALT",
+    "B-INCISION_LEVEL", "I-INCISION_LEVEL",
+    "B-INCISION_HEALING", "I-INCISION_HEALING",
+    "B-ANESTHESIA_METHOD", "I-ANESTHESIA_METHOD",
+    "B-ANESTHESIA_DOCTOR", "I-ANESTHESIA_DOCTOR",
+    "B-SURGEON", "I-SURGEON",
+    "B-SURGEON_ASSISTANT", "I-SURGEON_ASSISTANT",
+    "B-OPERATING_NURSE", "I-OPERATING_NURSE",
+    "B-BLOOD_LOSS", "I-BLOOD_LOSS",
+    "B-BLOOD_TRANSFUSION", "I-BLOOD_TRANSFUSION",
+    "B-FLUID_INFUSION", "I-FLUID_INFUSION",
+    "B-SURGERY_DURATION", "I-SURGERY_DURATION",
+    "B-INTRAOP_COMPLICATION", "I-INTRAOP_COMPLICATION",
+    "B-INTRAOP_FINDING", "I-INTRAOP_FINDING",
+    "B-SPECIMEN", "I-SPECIMEN",
+    "B-DRAINAGE_TUBE", "I-DRAINAGE_TUBE",
 ]
+
+
+ENTITY_TYPE_ALIASES = {
+    "ANESTHESIA_TYPE": "ANESTHESIA_METHOD",
+    "COMPLICATION": "INTRAOP_COMPLICATION",
+    "ASSISTANT": "SURGEON_ASSISTANT",
+    "ANESTHESIOLOGIST": "ANESTHESIA_DOCTOR",
+    "SCRUB_NURSE": "OPERATING_NURSE",
+    "CIRCULATING_NURSE": "OPERATING_NURSE",
+    "SURGERY_LEVEL": "SURGERY_NAME_ALT",
+    "SURGERY_PROCEDURE": "SURGERY_NAME",
+    "HOSPITALIZATION_NO": "HOSPITAL_NO",
+    "PATIENT_ID": "HOSPITAL_NO",
+    "OPERATION_DATE": "SURGERY_DATE",
+    "OPERATION_NAME": "SURGERY_NAME",
+    "INCISION_GRADE": "INCISION_LEVEL",
+    "WOUND_HEALING": "INCISION_HEALING",
+    "BLOOD_VOLUME": "BLOOD_LOSS",
+    "TRANSFUSION_VOLUME": "BLOOD_TRANSFUSION",
+    "INFUSION_VOLUME": "FLUID_INFUSION",
+    "OPERATION_DURATION": "SURGERY_DURATION",
+    "COMPLICATIONS": "INTRAOP_COMPLICATION",
+    "SURGICAL_FINDINGS": "INTRAOP_FINDING",
+    "OP_SURGEON": "SURGEON",
+    "OP_ASSISTANT": "SURGEON_ASSISTANT",
+    "OP_NURSE": "OPERATING_NURSE",
+}
 
 
 class NerModelService:
     def __init__(self):
         self.settings = get_settings()
         self.device = self.settings.device
-        self.model = None
-        self.tokenizer = None
+        self.inference = None
+        self.model_loaded = False
+        self.model_weight_exists = False
         self.label_to_id = {label: i for i, label in enumerate(ENTITY_LABELS)}
         self.id_to_label = {i: label for i, label in enumerate(ENTITY_LABELS)}
-        self.model_loaded = False
         self._try_load_model()
 
     def _try_load_model(self):
+        model_dir = os.path.join(self.settings.model_dir, "surgery-ner")
+        model_weight_path = os.path.join(model_dir, "pytorch_model.bin")
+        label_path = os.path.join(model_dir, "label2id.json")
+
+        if not os.path.exists(label_path):
+            logger.warning(
+                f"[NER模型] 标签文件不存在: {label_path}。"
+                f"请参考 models/surgery-ner/README.md 下载或训练模型。"
+                f"当前将仅使用正则抽取和规则引擎完成实体抽取。"
+            )
+            self.model_loaded = False
+            return
+
+        if not os.path.exists(model_weight_path):
+            logger.warning(
+                f"[NER模型] 模型权重文件不存在: {model_weight_path}。"
+                f"请从 models/surgery-ner/README.md 中的下载地址获取预训练权重，"
+                f"或运行 scripts/train_bilstm_crf.py 自行训练。"
+                f"当前将仅使用正则抽取和规则引擎完成实体抽取。"
+            )
+            self.model_loaded = False
+            return
+
         try:
-            import torch
-            from transformers import AutoTokenizer, AutoModel, BertForTokenClassification
+            scripts_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "scripts"
+            )
+            if scripts_path not in sys.path:
+                sys.path.insert(0, scripts_path)
+            from infer_bilstm_crf import SurgeryNerInference
 
-            model_path = os.path.join(self.settings.model_dir, "surgery-ner")
-            model_name = self.settings.bert_model_name
-
-            if os.path.exists(model_path) and len(os.listdir(model_path)) > 0:
-                logger.info(f"加载本地模型: {model_path}")
-                self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-                self.model = BertForTokenClassification.from_pretrained(
-                    model_path,
-                    num_labels=len(ENTITY_LABELS)
-                )
-            else:
-                logger.info(f"加载预训练模型: {model_name} (将使用模拟预测)")
-                self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-                dummy_state = True
-                self.model = None
-
-            if self.device == "cuda" and torch.cuda.is_available():
-                if self.model is not None:
-                    self.model = self.model.cuda()
-                logger.info("使用GPU加速")
-
+            self.inference = SurgeryNerInference(
+                model_dir=model_dir,
+                bert_model_name=self.settings.bert_model_name,
+                max_seq_length=min(self.settings.max_text_length, 512),
+                device=self.device,
+            )
             self.model_loaded = True
-            logger.info("NLP模型服务初始化完成")
-
+            self.model_weight_exists = True
+            logger.info(f"[NER模型] BiLSTM-CRF模型加载成功: {model_dir}")
         except ImportError as e:
-            logger.warning(f"深度学习框架未安装，将使用规则抽取模式: {e}")
+            logger.warning(
+                f"[NER模型] 深度学习依赖未安装，无法加载模型: {e}。"
+                f"请执行: pip install torch transformers seqeval。"
+                f"当前将仅使用正则抽取和规则引擎。"
+            )
             self.model_loaded = False
         except Exception as e:
-            logger.warning(f"模型加载失败，将使用规则抽取模式: {e}", exc_info=True)
+            logger.warning(
+                f"[NER模型] 加载失败: {e}。当前将仅使用正则抽取和规则引擎。",
+                exc_info=True,
+            )
             self.model_loaded = False
 
     def predict(self, text: str) -> List[Dict[str, Any]]:
-        if not text or not self.model_loaded or self.model is None:
-            return self._mock_predict(text)
-
-        try:
-            return self._bert_predict(text)
-        except Exception as e:
-            logger.error(f"BERT预测失败，回退到模拟: {e}", exc_info=True)
+        if not text or not text.strip():
             return []
 
-    def _bert_predict(self, text: str) -> List[Dict[str, Any]]:
-        import torch
+        if not self.model_loaded or self.inference is None:
+            return []
 
-        max_len = min(self.settings.max_text_length, 512)
-        text_chunks = [text[i:i + max_len - 2] for i in range(0, len(text), max_len - 2)]
+        try:
+            raw_entities = self.inference.predict(text)
+            return [self._normalize_entity(e) for e in raw_entities if e]
+        except Exception as e:
+            logger.error(f"[NER模型] 预测失败，返回空列表（将由正则和规则引擎补全）: {e}", exc_info=True)
+            return []
 
-        all_entities = []
-        char_offset = 0
+    def _normalize_entity(self, e: Dict[str, Any]) -> Dict[str, Any]:
+        entity_type = e.get("entity_type", "")
+        entity_type = ENTITY_TYPE_ALIASES.get(entity_type, entity_type)
 
-        for chunk in text_chunks:
-            encoding = self.tokenizer(
-                chunk,
-                return_tensors="pt",
-                truncation=True,
-                max_length=max_len,
-                padding="max_length",
-                return_offsets_mapping=True
-            )
+        text_val = e.get("text") or e.get("entity_value") or e.get("value") or ""
+        text_val = str(text_val).strip()
+        if not text_val:
+            return None
 
-            input_ids = encoding["input_ids"].to(self.device)
-            attention_mask = encoding["attention_mask"].to(self.device)
-            offset_mapping = encoding["offset_mapping"][0].tolist()
-
-            with torch.no_grad():
-                outputs = self.model(input_ids, attention_mask=attention_mask)
-                logits = outputs.logits[0]
-                pred_ids = torch.argmax(logits, dim=-1).cpu().tolist()
-                scores = torch.softmax(logits, dim=-1).max(dim=-1)[0].cpu().tolist()
-
-            entities = self._decode_predictions(
-                chunk, pred_ids, scores, offset_mapping, char_offset
-            )
-            all_entities.extend(entities)
-            char_offset += len(chunk)
-
-        return all_entities
-
-    def _decode_predictions(
-        self,
-        text: str,
-        pred_ids: List[int],
-        scores: List[float],
-        offset_mapping: List[List[int]],
-        char_offset: int
-    ) -> List[Dict[str, Any]]:
-        entities = []
-        current_entity = None
-
-        for i, (label_id, score) in enumerate(zip(pred_ids, scores)):
-            label = self.id_to_label[label_id]
-            offset = offset_mapping[i]
-
-            if offset[0] == offset[1]:
-                continue
-
-            if label.startswith("B-"):
-                if current_entity:
-                    entities.append(self._build_entity(current_entity, char_offset, text))
-                entity_type = label[2:]
-                current_entity = {
-                    "type": entity_type,
-                    "chars": [],
-                    "start": offset[0],
-                    "scores": [score],
-                    "source": "MODEL"
-                }
-            elif label.startswith("I-"):
-                entity_type = label[2:]
-                if current_entity and current_entity["type"] == entity_type:
-                    current_entity["chars"].extend(text[offset[0]:offset[1]])
-                    current_entity["scores"].append(score)
-                else:
-                    if current_entity:
-                        entities.append(self._build_entity(current_entity, char_offset, text))
-                    current_entity = {
-                        "type": entity_type,
-                        "chars": list(text[offset[0]:offset[1]]),
-                        "start": offset[0],
-                        "scores": [score],
-                        "source": "MODEL"
-                    }
-            else:
-                if current_entity:
-                    entities.append(self._build_entity(current_entity, char_offset, text))
-                    current_entity = None
-
-        if current_entity:
-            entities.append(self._build_entity(current_entity, char_offset, text))
-
-        return entities
-
-    def _build_entity(self, entity_data: Dict[str, Any], offset: int, text: str) -> Dict[str, Any]:
-        entity_type = entity_data["type"]
-        start = entity_data["start"]
-        chars = entity_data["chars"]
-        if not chars:
-            chars = list(text[start:start + 4])
-        value = "".join(chars).strip()
-        avg_conf = float(np.mean(entity_data["scores"])) if entity_data["scores"] else 0.7
+        start = e.get("start_pos", e.get("start", 0))
+        end = e.get("end_pos", e.get("end", start + len(text_val)))
+        conf = float(e.get("confidence", 0.7))
+        if conf < 0 or conf > 1:
+            conf = max(0.0, min(1.0, conf))
 
         return {
             "entity_type": entity_type,
-            "entity_value": value,
-            "entity_unit": None,
-            "confidence": round(avg_conf, 4),
-            "source": entity_data.get("source", "MODEL"),
-            "start_pos": start + offset,
-            "end_pos": start + offset + len(value),
-            "original_text": value
+            "entity_value": text_val,
+            "entity_unit": self._extract_unit(text_val, entity_type),
+            "confidence": round(conf, 4),
+            "source": e.get("source", "MODEL"),
+            "start_pos": int(start),
+            "end_pos": int(end),
+            "original_text": text_val,
         }
 
-    def _mock_predict(self, text: str) -> List[Dict[str, Any]]:
-        entities = []
-
-        patterns = [
-            (r"腹腔镜[\u4e00-\u9fa5A-Za-z0-9\-]+(?:切除术|吻合术|修补术|成形术|置换术|切开术|结扎术|活检术|造瘘术|探查术|植骨术|内固定术)", "SURGERY_NAME", 0.88),
-            (r"[\u4e00-\u9fa5]{2,10}(?:切除术|吻合术|修补术|成形术|置换术|切开术|结扎术|活检术|造瘘术|探查术|植骨术|内固定术)", "SURGERY_NAME", 0.82),
-            (r"(?:全身|全麻|硬膜外|腰硬联合|腰麻|椎管内|局部|颈丛|臂丛|静脉|吸入|静吸复合)[\u4e00-\u9fa5（）\(\)A-Za-z0-9]*麻醉", "ANESTHESIA_TYPE", 0.90),
-            (r"(?:普外科|骨科|神经外科|心胸外科|泌尿外科|妇产科|眼科|耳鼻喉科|口腔科|整形外科|烧伤科|肝胆外科|胃肠外科|甲乳外科|血管外科|结直肠外科)", "DEPARTMENT", 0.95),
-            (r"[\u4e00-\u9fa5]{2,3}科", "DEPARTMENT", 0.70),
-            (r"[\u4e00-\u9fa5]{2,4}医生", "SURGEON", 0.75),
-            (r"[\u4e00-\u9fa5]{2,4}主任", "SURGEON", 0.80),
-            (r"[\u4e00-\u9fa5]{2,4}护士", "SCRUB_NURSE", 0.75),
-            (r"(?:一|二|三|四|1|2|3|4)级手术?", "SURGERY_LEVEL", 0.85),
-            (r"[\u4e00-\u9fa5]{2,6}(?:伴|并|合并)[\u4e00-\u9fa5A-Za-z0-9]{2,30}", "COMPLICATION", 0.65),
-        ]
-
-        for pattern, entity_type, base_conf in patterns:
-            for match in re.finditer(pattern, text):
-                value = match.group(0)
-                conf = min(0.99, base_conf + np.random.uniform(-0.05, 0.05))
-                entities.append({
-                    "entity_type": entity_type,
-                    "entity_value": value,
-                    "entity_unit": None,
-                    "confidence": round(conf, 4),
-                    "source": "MODEL",
-                    "start_pos": match.start(),
-                    "end_pos": match.end(),
-                    "original_text": value
-                })
-
-        return entities
+    @staticmethod
+    def _extract_unit(text: str, entity_type: str) -> Optional[str]:
+        if entity_type in ("BLOOD_LOSS", "BLOOD_TRANSFUSION", "FLUID_INFUSION"):
+            m = re.search(r"(ml|mL|ML|cc|毫升|ml/单位|单位)", text, re.IGNORECASE)
+            if m:
+                unit = m.group(1)
+                if unit == "毫升":
+                    return "ml"
+                return unit.lower()
+        if entity_type == "SURGERY_DURATION":
+            m = re.search(r"(小时|分钟|min|h|hr)", text, re.IGNORECASE)
+            if m:
+                unit = m.group(1).lower()
+                if unit in ("h", "hr", "小时"):
+                    return "小时"
+                if unit in ("min", "分钟"):
+                    return "分钟"
+        return None

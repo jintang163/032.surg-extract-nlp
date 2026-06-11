@@ -1,0 +1,62 @@
+{
+  "model_name": "surgery-ner-bilstm-crf",
+  "model_version": "1.0.0",
+  "description": "基于BERT Embedding + BiLSTM + CRF的手术记录实体识别模型",
+  "created_date": "2024-01-01",
+  "architecture": {
+    "embedding": "bert-base-chinese",
+    "embedding_dim": 768,
+    "bilstm_hidden_dim": 256,
+    "bilstm_layers": 2,
+    "bilstm_dropout": 0.3,
+    "use_crf": true,
+    "num_labels": 69
+  },
+  "entity_types": [
+    "PATIENT_NAME",
+    "GENDER",
+    "AGE",
+    "HOSPITAL_NO",
+    "DEPARTMENT",
+    "SURGERY_DATE",
+    "SURGERY_NAME",
+    "SURGERY_NAME_ALT",
+    "INCISION_LEVEL",
+    "INCISION_HEALING",
+    "ANESTHESIA_METHOD",
+    "ANESTHESIA_DOCTOR",
+    "SURGEON",
+    "SURGEON_ASSISTANT",
+    "OPERATING_NURSE",
+    "BLOOD_LOSS",
+    "BLOOD_TRANSFUSION",
+    "FLUID_INFUSION",
+    "SURGERY_DURATION",
+    "INTRAOP_COMPLICATION",
+    "INTRAOP_FINDING",
+    "SPECIMEN",
+    "DRAINAGE_TUBE"
+  ],
+  "label_scheme": "BIO",
+  "training_config": {
+    "epochs": 30,
+    "batch_size": 16,
+    "learning_rate": 0.001,
+    "bert_learning_rate": 2e-5,
+    "weight_decay": 0.01,
+    "max_seq_length": 512,
+    "validation_split": 0.1,
+    "early_stopping_patience": 5,
+    "optimizer": "AdamW",
+    "scheduler": "linear_warmup",
+    "warmup_steps": 100
+  },
+  "data_config": {
+    "train_data_path": "./data/train.txt",
+    "dev_data_path": "./data/dev.txt",
+    "test_data_path": "./data/test.txt",
+    "label_file": "./label2id.json",
+    "data_format": "conll"
+  },
+  "evaluation_metrics": ["precision", "recall", "f1", "accuracy"]
+}

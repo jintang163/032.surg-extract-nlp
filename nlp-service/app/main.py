@@ -86,7 +86,13 @@ async def api_ocr_process(
         return OcrProcessResponse(**result)
     except Exception as e:
         logger.error(f"OCR处理异常: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        return OcrProcessResponse(
+            success=False,
+            ocr_text=None,
+            processed_text=None,
+            error_message=f"OCR服务异常: {str(e)}",
+            processing_time_ms=int((time.time() - start) * 1000)
+        )
 
 
 @app.post("/api/v1/ocr/process-text", response_model=OcrProcessResponse, tags=["OCR"])
@@ -101,29 +107,25 @@ async def api_ocr_process_text(
     if not file_path:
         return OcrProcessResponse(
             success=False,
-            error_message="文件路径为空",
+            ocr_text=None,
+            processed_text=None,
+            error_message="文件路径为空，请提供有效的文件路径",
             processing_time_ms=int((time.time() - start) * 1000)
         )
 
     try:
-        import os
-        if os.path.exists(file_path):
-            with open(file_path, "rb") as f:
-                content = f.read()
-            filename = os.path.basename(file_path)
-            result = service.process_ocr(content, filename, request.file_type)
-        else:
-            result = {
-                "success": False,
-                "ocr_text": None,
-                "processed_text": None,
-                "error_message": f"文件不存在: {file_path}"
-            }
+        result = service.process_ocr_by_path(file_path, request.file_type)
         result["processing_time_ms"] = int((time.time() - start) * 1000)
         return OcrProcessResponse(**result)
     except Exception as e:
         logger.error(f"OCR文本处理异常: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        return OcrProcessResponse(
+            success=False,
+            ocr_text=None,
+            processed_text=None,
+            error_message=f"OCR服务异常: {str(e)}",
+            processing_time_ms=int((time.time() - start) * 1000)
+        )
 
 
 @app.post("/api/v1/ner/extract", response_model=NerExtractResponse, tags=["实体抽取"])
