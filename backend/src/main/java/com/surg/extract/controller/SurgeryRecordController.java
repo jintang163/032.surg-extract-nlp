@@ -47,6 +47,33 @@ public class SurgeryRecordController {
         return Result.success("上传成功，正在后台处理", result);
     }
 
+    @PostMapping(value = "/upload-multi", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "上传手术记录（多附件）", description = "支持上传主文档+语音旁白/器械图谱等多个附件，系统自动进行OCR/ASR/器械识别和多模态融合")
+    public Result<RecordQueryDTO> uploadRecordMulti(
+            @RequestPart("mainFile") MultipartFile mainFile,
+            @RequestPart(value = "attachments", required = false) List<MultipartFile> attachments,
+            @RequestParam(value = "patientName", required = false) String patientName,
+            @RequestParam(value = "hospitalNo", required = false) String hospitalNo,
+            @RequestParam(value = "patientId", required = false) String patientId,
+            @RequestParam(value = "department", required = false) String department) {
+
+        RecordUploadDTO uploadDTO = new RecordUploadDTO();
+        uploadDTO.setFileName(mainFile.getOriginalFilename());
+        uploadDTO.setPatientName(patientName);
+        uploadDTO.setHospitalNo(hospitalNo);
+        uploadDTO.setPatientId(patientId);
+        uploadDTO.setDepartment(department);
+
+        RecordQueryDTO result = surgeryRecordService.uploadRecordWithAttachments(mainFile, attachments, uploadDTO);
+        return Result.success("上传成功，正在后台处理", result);
+    }
+
+    @GetMapping("/{id}/attachments")
+    @Operation(summary = "获取记录附件列表", description = "获取手术记录的所有附件列表")
+    public Result<List<RecordAttachmentDTO>> getAttachments(@PathVariable Long id) {
+        return Result.success(surgeryRecordService.getRecordAttachments(id));
+    }
+
     @GetMapping("/list")
     @Operation(summary = "手术记录列表", description = "分页查询手术记录列表")
     public Result<PageResult<RecordQueryDTO>> list(

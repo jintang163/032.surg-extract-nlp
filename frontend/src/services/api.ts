@@ -104,6 +104,36 @@ export const http = {
       },
     })
   },
+
+  uploadMulti<T = any>(
+    url: string,
+    mainFile: File,
+    attachments: File[],
+    params?: Record<string, any>,
+    onProgress?: (progress: number) => void
+  ): Promise<T> {
+    const formData = new FormData()
+    formData.append('mainFile', mainFile)
+    attachments.forEach((f, idx) => {
+      formData.append('attachments', f)
+    })
+    if (params) {
+      Object.keys(params).forEach((key) => {
+        if (params[key] !== undefined && params[key] !== null) {
+          formData.append(key, String(params[key]))
+        }
+      })
+    }
+    return service.post(url, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (progressEvent) => {
+        if (onProgress && progressEvent.total) {
+          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+          onProgress(progress)
+        }
+      },
+    })
+  },
 }
 
 export const authApi = {
@@ -120,6 +150,13 @@ export const recordApi = {
     onProgress?: (p: number) => void
   ) => http.upload<any>('/records/upload', file, params, onProgress),
 
+  uploadMulti: (
+    mainFile: File,
+    attachments: File[],
+    params: { patientName?: string; hospitalNo?: string; patientId?: string; department?: string },
+    onProgress?: (p: number) => void
+  ) => http.uploadMulti<any>('/records/upload-multi', mainFile, attachments, params, onProgress),
+
   list: (params: {
     patientName?: string
     hospitalNo?: string
@@ -131,6 +168,8 @@ export const recordApi = {
   }) => http.get<any>('/records/list', { params }),
 
   detail: (id: number) => http.get<any>(`/records/${id}`),
+
+  getAttachments: (id: number) => http.get<any[]>(`/records/${id}/attachments`),
 
   getOcrText: (id: number) => http.get<string>(`/records/${id}/ocr-text`),
 

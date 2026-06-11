@@ -40,6 +40,7 @@ class DetectedInstrument:
     confidence: float
     bbox: Optional[Tuple[float, float, float, float]] = None  # x1, y1, x2, y2
     category: Optional[str] = None
+    specialty: Optional[str] = None
     count: int = 1
 
     def to_dict(self) -> Dict[str, Any]:
@@ -48,57 +49,437 @@ class DetectedInstrument:
             "confidence": round(self.confidence, 4),
             "bbox": [round(x, 2) for x in self.bbox] if self.bbox else None,
             "category": self.category,
+            "specialty": self.specialty,
             "count": self.count,
         }
 
 
+INSTRUMENT_SPECIALTIES = [
+    "普外科", "骨科", "心胸外科", "神经外科",
+    "妇产科", "泌尿外科", "眼科", "耳鼻喉科",
+]
+
 SURGICAL_INSTRUMENTS = {
-    "手术刀": {"category": "切割器械", "aliases": ["手术刀", "手术刀片", "blade", "scalpel"]},
-    "止血钳": {"category": "止血器械", "aliases": ["止血钳", "血管钳", "hemostat", "forceps"]},
-    "镊子": {"category": "夹持器械", "aliases": ["镊子", "医用镊子", "tweezer", "forceps"]},
-    "组织镊": {"category": "夹持器械", "aliases": ["组织镊", "有齿镊", "tissue forceps"]},
-    "手术剪": {"category": "剪切器械", "aliases": ["手术剪", "组织剪", "线剪", "scissors"]},
-    "持针器": {"category": "缝合器械", "aliases": ["持针器", "持针钳", "needle holder", "needle driver"]},
-    "缝合针": {"category": "缝合器械", "aliases": ["缝合针", "suture needle", "needle"]},
-    "缝合线": {"category": "缝合器械", "aliases": ["缝合线", "suture"]},
-    "拉钩": {"category": "牵开器械", "aliases": ["拉钩", "牵开器", "retractor"]},
-    "腹腔拉钩": {"category": "牵开器械", "aliases": ["腹腔拉钩", "腹壁拉钩"]},
-    "吸引器": {"category": "吸引器械", "aliases": ["吸引器", "吸引头", "suction"]},
-    "电刀": {"category": "电外科器械", "aliases": ["电刀", "电凝", "高频电刀", "electrocautery", "bovie"]},
-    "超声刀": {"category": "电外科器械", "aliases": ["超声刀", "harmonic scalpel", "ultrasonic scalpel"]},
-    "腔镜": {"category": "内窥镜器械", "aliases": ["腔镜", "腹腔镜", "胸腔镜", "endoscope", "laparoscope"]},
-    "穿刺器": {"category": "腔镜器械", "aliases": ["穿刺器", "trocar", "穿刺套管"]},
-    "抓钳": {"category": "腔镜器械", "aliases": ["抓钳", "grasper"]},
-    "分离钳": {"category": "腔镜器械", "aliases": ["分离钳", "dissecting forceps"]},
-    "钛夹": {"category": "止血器械", "aliases": ["钛夹", "hem-o-lok", "clip"]},
-    "施夹器": {"category": "腔镜器械", "aliases": ["施夹器", "clip applier"]},
-    "吻合器": {"category": "吻合器械", "aliases": ["吻合器", "stapler"]},
-    "切割吻合器": {"category": "吻合器械", "aliases": ["切割吻合器", "linear cutter"]},
-    "吻合钉": {"category": "吻合器械", "aliases": ["吻合钉", "staple"]},
-    "骨刀": {"category": "骨科器械", "aliases": ["骨刀", "osteotome"]},
-    "骨凿": {"category": "骨科器械", "aliases": ["骨凿", "chisel"]},
-    "骨锤": {"category": "骨科器械", "aliases": ["骨锤", "mallet"]},
-    "咬骨钳": {"category": "骨科器械", "aliases": ["咬骨钳", "rongeur"]},
-    "撑开器": {"category": "骨科器械", "aliases": ["撑开器", "distractor"]},
-    "钢板": {"category": "内固定器械", "aliases": ["钢板", "plate"]},
-    "螺钉": {"category": "内固定器械", "aliases": ["螺钉", "screw"]},
-    "髓内钉": {"category": "内固定器械", "aliases": ["髓内钉", "intramedullary nail"]},
-    "输液器": {"category": "输液器械", "aliases": ["输液器", "infusion set"]},
-    "注射器": {"category": "注射器械", "aliases": ["注射器", "syringe"]},
-    "针头": {"category": "注射器械", "aliases": ["针头", "needle"]},
-    "导管": {"category": "介入器械", "aliases": ["导管", "catheter"]},
-    "导丝": {"category": "介入器械", "aliases": ["导丝", "guidewire"]},
-    "敷料": {"category": "敷料", "aliases": ["敷料", "dressing", "纱布"]},
-    "纱布": {"category": "敷料", "aliases": ["纱布", "gauze"]},
-    "棉球": {"category": "敷料", "aliases": ["棉球", "cotton ball"]},
-    "创巾": {"category": "无菌敷料", "aliases": ["创巾", "手术巾", "surgical drape"]},
-    "手套": {"category": "防护用品", "aliases": ["手套", "surgical glove", "glove"]},
-    "口罩": {"category": "防护用品", "aliases": ["口罩", "mask"]},
-    "手术衣": {"category": "防护用品", "aliases": ["手术衣", "gown"]},
-    "无影灯": {"category": "手术设备", "aliases": ["无影灯", "surgical lamp", "operating light"]},
-    "手术床": {"category": "手术设备", "aliases": ["手术床", "operating table"]},
-    "麻醉机": {"category": "麻醉设备", "aliases": ["麻醉机", "anesthesia machine"]},
-    "监护仪": {"category": "监护设备", "aliases": ["监护仪", "monitor", "vital sign monitor"]},
+    "手术刀": {
+        "category": "切割器械",
+        "specialties": ["普外科", "心胸外科", "神经外科", "妇产科", "泌尿外科", "眼科", "耳鼻喉科"],
+        "aliases": ["手术刀", "手术刀片", "blade", "scalpel", "圆刀", "尖刀"],
+    },
+    "手术剪": {
+        "category": "剪切器械",
+        "specialties": ["普外科", "骨科", "心胸外科", "妇产科", "泌尿外科", "眼科", "耳鼻喉科"],
+        "aliases": ["手术剪", "组织剪", "线剪", "scissors", "直剪", "弯剪", "梅氏剪"],
+    },
+    "止血钳": {
+        "category": "止血器械",
+        "specialties": ["普外科", "骨科", "心胸外科", "神经外科", "妇产科", "泌尿外科", "耳鼻喉科"],
+        "aliases": ["止血钳", "血管钳", "hemostat", "forceps", "直止血钳", "弯止血钳", "蚊式钳"],
+    },
+    "镊子": {
+        "category": "夹持器械",
+        "specialties": ["普外科", "骨科", "妇产科", "泌尿外科", "眼科", "耳鼻喉科"],
+        "aliases": ["镊子", "医用镊子", "tweezer", "forceps", "平镊"],
+    },
+    "组织镊": {
+        "category": "夹持器械",
+        "specialties": ["普外科", "心胸外科", "神经外科", "妇产科", "眼科"],
+        "aliases": ["组织镊", "有齿镊", "tissue forceps", "爱立斯镊"],
+    },
+    "持针器": {
+        "category": "缝合器械",
+        "specialties": ["普外科", "骨科", "心胸外科", "神经外科", "妇产科", "泌尿外科", "眼科", "耳鼻喉科"],
+        "aliases": ["持针器", "持针钳", "needle holder", "needle driver"],
+    },
+    "缝合针": {
+        "category": "缝合器械",
+        "specialties": ["普外科", "骨科", "心胸外科", "妇产科", "泌尿外科", "眼科", "耳鼻喉科"],
+        "aliases": ["缝合针", "suture needle", "needle", "圆针对", "三角针"],
+    },
+    "缝合线": {
+        "category": "缝合器械",
+        "specialties": ["普外科", "骨科", "心胸外科", "神经外科", "妇产科", "泌尿外科", "眼科", "耳鼻喉科"],
+        "aliases": ["缝合线", "suture", "可吸收线", "丝线", "羊肠线"],
+    },
+    "拉钩": {
+        "category": "牵开器械",
+        "specialties": ["普外科", "骨科", "心胸外科", "妇产科"],
+        "aliases": ["拉钩", "牵开器", "retractor", "爪形拉钩"],
+    },
+    "腹腔拉钩": {
+        "category": "牵开器械",
+        "specialties": ["普外科", "妇产科", "泌尿外科"],
+        "aliases": ["腹腔拉钩", "腹壁拉钩", "阑尾拉钩", "甲状腺拉钩"],
+    },
+    "吸引器": {
+        "category": "吸引器械",
+        "specialties": ["普外科", "骨科", "心胸外科", "神经外科", "妇产科", "泌尿外科", "耳鼻喉科"],
+        "aliases": ["吸引器", "吸引头", "suction", "吸引管"],
+    },
+    "电刀": {
+        "category": "电外科器械",
+        "specialties": ["普外科", "骨科", "心胸外科", "妇产科", "泌尿外科", "耳鼻喉科"],
+        "aliases": ["电刀", "电凝", "高频电刀", "electrocautery", "bovie", "单极电刀", "双极电刀"],
+    },
+    "超声刀": {
+        "category": "电外科器械",
+        "specialties": ["普外科", "心胸外科", "妇产科", "泌尿外科", "耳鼻喉科"],
+        "aliases": ["超声刀", "harmonic scalpel", "ultrasonic scalpel", "超声手术刀"],
+    },
+    "腔镜": {
+        "category": "内窥镜器械",
+        "specialties": ["普外科", "心胸外科", "妇产科", "泌尿外科", "耳鼻喉科"],
+        "aliases": ["腔镜", "腹腔镜", "胸腔镜", "endoscope", "laparoscope", "宫腔镜", "膀胱镜"],
+    },
+    "穿刺器": {
+        "category": "腔镜器械",
+        "specialties": ["普外科", "妇产科", "泌尿外科"],
+        "aliases": ["穿刺器", "trocar", "穿刺套管", "戳卡"],
+    },
+    "抓钳": {
+        "category": "腔镜器械",
+        "specialties": ["普外科", "妇产科", "泌尿外科"],
+        "aliases": ["抓钳", "grasper", "无损伤抓钳"],
+    },
+    "分离钳": {
+        "category": "腔镜器械",
+        "specialties": ["普外科", "妇产科", "泌尿外科"],
+        "aliases": ["分离钳", "dissecting forceps", " Maryland钳"],
+    },
+    "钛夹": {
+        "category": "止血器械",
+        "specialties": ["普外科", "心胸外科", "妇产科", "泌尿外科"],
+        "aliases": ["钛夹", "hem-o-lok", "clip", "生物夹"],
+    },
+    "施夹器": {
+        "category": "腔镜器械",
+        "specialties": ["普外科", "心胸外科", "妇产科", "泌尿外科"],
+        "aliases": ["施夹器", "clip applier", "钛夹钳"],
+    },
+    "吻合器": {
+        "category": "吻合器械",
+        "specialties": ["普外科", "心胸外科", "妇产科", "泌尿外科"],
+        "aliases": ["吻合器", "stapler", "圆形吻合器", "直线吻合器"],
+    },
+    "切割吻合器": {
+        "category": "吻合器械",
+        "specialties": ["普外科", "心胸外科", "妇产科"],
+        "aliases": ["切割吻合器", "linear cutter", "直线切割闭合器"],
+    },
+    "吻合钉": {
+        "category": "吻合器械",
+        "specialties": ["普外科", "心胸外科", "骨科", "妇产科"],
+        "aliases": ["吻合钉", "staple", "钛钉"],
+    },
+    "骨刀": {
+        "category": "骨科器械",
+        "specialties": ["骨科", "耳鼻喉科"],
+        "aliases": ["骨刀", "osteotome", "平骨刀", "弯骨刀"],
+    },
+    "骨凿": {
+        "category": "骨科器械",
+        "specialties": ["骨科"],
+        "aliases": ["骨凿", "chisel", "圆骨凿"],
+    },
+    "骨锤": {
+        "category": "骨科器械",
+        "specialties": ["骨科", "耳鼻喉科"],
+        "aliases": ["骨锤", "mallet", "骨槌"],
+    },
+    "咬骨钳": {
+        "category": "骨科器械",
+        "specialties": ["骨科", "神经外科", "耳鼻喉科"],
+        "aliases": ["咬骨钳", "rongeur", "椎板咬骨钳", "鹰嘴咬骨钳"],
+    },
+    "撑开器": {
+        "category": "骨科器械",
+        "specialties": ["骨科", "心胸外科"],
+        "aliases": ["撑开器", "distractor", "脊柱撑开器"],
+    },
+    "钢板": {
+        "category": "内固定器械",
+        "specialties": ["骨科"],
+        "aliases": ["钢板", "plate", "锁定钢板", "加压钢板"],
+    },
+    "螺钉": {
+        "category": "内固定器械",
+        "specialties": ["骨科", "神经外科"],
+        "aliases": ["螺钉", "screw", "皮质骨螺钉", "松质骨螺钉", "椎弓根螺钉"],
+    },
+    "髓内钉": {
+        "category": "内固定器械",
+        "specialties": ["骨科"],
+        "aliases": ["髓内钉", "intramedullary nail", "交锁髓内钉"],
+    },
+    "克氏针": {
+        "category": "内固定器械",
+        "specialties": ["骨科", "耳鼻喉科"],
+        "aliases": ["克氏针", "Kirschner wire", "K针", "骨圆针"],
+    },
+    "钢丝": {
+        "category": "内固定器械",
+        "specialties": ["骨科", "心胸外科"],
+        "aliases": ["钢丝", "wire", "不锈钢丝"],
+    },
+    "骨锉": {
+        "category": "骨科器械",
+        "specialties": ["骨科"],
+        "aliases": ["骨锉", "rasp", "骨锉刀"],
+    },
+    "磨钻": {
+        "category": "骨科器械",
+        "specialties": ["骨科", "神经外科", "耳鼻喉科"],
+        "aliases": ["磨钻", "drill", "电钻", "气动磨钻", "高速磨钻"],
+    },
+    "开胸器": {
+        "category": "心胸外科器械",
+        "specialties": ["心胸外科"],
+        "aliases": ["开胸器", "胸骨牵开器", "chest retractor", "肋骨牵开器"],
+    },
+    "胸骨锯": {
+        "category": "心胸外科器械",
+        "specialties": ["心胸外科"],
+        "aliases": ["胸骨锯", "sternum saw", "摆动锯"],
+    },
+    "血管吻合器": {
+        "category": "心胸外科器械",
+        "specialties": ["心胸外科"],
+        "aliases": ["血管吻合器", "vascular stapler"],
+    },
+    "人工血管": {
+        "category": "心胸外科植入物",
+        "specialties": ["心胸外科"],
+        "aliases": ["人工血管", "vascular graft", "PTFE血管"],
+    },
+    "体外循环管": {
+        "category": "心胸外科设备",
+        "specialties": ["心胸外科"],
+        "aliases": ["体外循环管", "CPB管", "心肺转流管"],
+    },
+    "动脉瘤夹": {
+        "category": "神经外科器械",
+        "specialties": ["神经外科"],
+        "aliases": ["动脉瘤夹", "aneurysm clip", "Yasargil夹"],
+    },
+    "脑压板": {
+        "category": "神经外科器械",
+        "specialties": ["神经外科"],
+        "aliases": ["脑压板", "brain spatula", "脑牵开器"],
+    },
+    "吸引器头": {
+        "category": "神经外科器械",
+        "specialties": ["神经外科", "耳鼻喉科"],
+        "aliases": ["吸引器头", "suction tip", "Frazier吸引管"],
+    },
+    "显微剪刀": {
+        "category": "显微外科器械",
+        "specialties": ["神经外科", "眼科", "耳鼻喉科"],
+        "aliases": ["显微剪刀", "micro scissors", "显微剪"],
+    },
+    "显微镊子": {
+        "category": "显微外科器械",
+        "specialties": ["神经外科", "眼科", "耳鼻喉科"],
+        "aliases": ["显微镊子", "micro forceps", "显微镊"],
+    },
+    "阴道窥器": {
+        "category": "妇产科器械",
+        "specialties": ["妇产科"],
+        "aliases": ["阴道窥器", "speculum", "窥阴器", "鸭嘴钳"],
+    },
+    "宫颈钳": {
+        "category": "妇产科器械",
+        "specialties": ["妇产科"],
+        "aliases": ["宫颈钳", "cervical forceps", "单爪钳", "双爪钳"],
+    },
+    "刮宫器": {
+        "category": "妇产科器械",
+        "specialties": ["妇产科"],
+        "aliases": ["刮宫器", "curette", "刮匙", "人流刮匙"],
+    },
+    "胎头吸引器": {
+        "category": "妇产科器械",
+        "specialties": ["妇产科"],
+        "aliases": ["胎头吸引器", "vacuum extractor", "胎吸"],
+    },
+    "产钳": {
+        "category": "妇产科器械",
+        "specialties": ["妇产科"],
+        "aliases": ["产钳", "obstetric forceps", "低位产钳"],
+    },
+    "举宫器": {
+        "category": "妇产科腔镜器械",
+        "specialties": ["妇产科"],
+        "aliases": ["举宫器", "uterine manipulator"],
+    },
+    "电切镜": {
+        "category": "泌尿外科器械",
+        "specialties": ["泌尿外科"],
+        "aliases": ["电切镜", "resectoscope", "TURP镜", "前列腺电切镜"],
+    },
+    "膀胱镜": {
+        "category": "泌尿外科器械",
+        "specialties": ["泌尿外科"],
+        "aliases": ["膀胱镜", "cystoscope"],
+    },
+    "输尿管镜": {
+        "category": "泌尿外科器械",
+        "specialties": ["泌尿外科"],
+        "aliases": ["输尿管镜", "ureteroscope", "硬镜", "软镜"],
+    },
+    "肾镜": {
+        "category": "泌尿外科器械",
+        "specialties": ["泌尿外科"],
+        "aliases": ["肾镜", "nephroscope", "经皮肾镜"],
+    },
+    "碎石杆": {
+        "category": "泌尿外科器械",
+        "specialties": ["泌尿外科"],
+        "aliases": ["碎石杆", "lithotripter", "气压弹道碎石", "超声碎石"],
+    },
+    "双J管": {
+        "category": "泌尿外科植入物",
+        "specialties": ["泌尿外科"],
+        "aliases": ["双J管", "double J stent", "输尿管支架"],
+    },
+    "导尿管": {
+        "category": "泌尿外科器械",
+        "specialties": ["泌尿外科", "妇产科", "普外科"],
+        "aliases": ["导尿管", "catheter", "Foley管", "三腔导尿管"],
+    },
+    "眼科手术刀": {
+        "category": "眼科器械",
+        "specialties": ["眼科"],
+        "aliases": ["眼科手术刀", "keratome", "隧道刀", "穿刺刀"],
+    },
+    "显微眼科剪": {
+        "category": "眼科器械",
+        "specialties": ["眼科"],
+        "aliases": ["显微眼科剪", "眼科剪", "角膜剪", "结膜剪"],
+    },
+    "眼科镊": {
+        "category": "眼科器械",
+        "specialties": ["眼科"],
+        "aliases": ["眼科镊", "ophthalmic forceps", "结膜镊", "晶体镊"],
+    },
+    "人工晶体": {
+        "category": "眼科植入物",
+        "specialties": ["眼科"],
+        "aliases": ["人工晶体", "IOL", "intraocular lens", "折叠晶体"],
+    },
+    "超声乳化手柄": {
+        "category": "眼科设备",
+        "specialties": ["眼科"],
+        "aliases": ["超声乳化手柄", "phacoemulsification", "超乳手柄"],
+    },
+    "耳鼻喉科咬骨钳": {
+        "category": "耳鼻喉科器械",
+        "specialties": ["耳鼻喉科"],
+        "aliases": ["耳鼻喉科咬骨钳", "乳突咬骨钳", "Storck咬骨钳"],
+    },
+    "鼻窦镜": {
+        "category": "耳鼻喉科器械",
+        "specialties": ["耳鼻喉科"],
+        "aliases": ["鼻窦镜", "sinoscope", "鼻内镜"],
+    },
+    "喉镜": {
+        "category": "耳鼻喉科器械",
+        "specialties": ["耳鼻喉科"],
+        "aliases": ["喉镜", "laryngoscope", "间接喉镜", "直接喉镜", "纤维喉镜"],
+    },
+    "耳显微器械": {
+        "category": "耳鼻喉科器械",
+        "specialties": ["耳鼻喉科"],
+        "aliases": ["耳显微器械", "耳内镜", "耳用显微剪刀"],
+    },
+    "扁桃体刀": {
+        "category": "耳鼻喉科器械",
+        "specialties": ["耳鼻喉科"],
+        "aliases": ["扁桃体刀", "tonsillotome", "扁桃体圈套器"],
+    },
+    "鼻中隔咬骨钳": {
+        "category": "耳鼻喉科器械",
+        "specialties": ["耳鼻喉科"],
+        "aliases": ["鼻中隔咬骨钳", "鼻中隔旋转刀"],
+    },
+    "输液器": {
+        "category": "输液器械",
+        "specialties": ["普外科", "骨科", "心胸外科", "神经外科", "妇产科", "泌尿外科", "眼科", "耳鼻喉科"],
+        "aliases": ["输液器", "infusion set"],
+    },
+    "注射器": {
+        "category": "注射器械",
+        "specialties": ["普外科", "骨科", "妇产科", "麻醉科"],
+        "aliases": ["注射器", "syringe", "针管"],
+    },
+    "针头": {
+        "category": "注射器械",
+        "specialties": ["普外科", "麻醉科"],
+        "aliases": ["针头", "needle", "注射针"],
+    },
+    "导管": {
+        "category": "介入器械",
+        "specialties": ["心胸外科", "神经外科", "泌尿外科"],
+        "aliases": ["导管", "catheter", "血管导管"],
+    },
+    "导丝": {
+        "category": "介入器械",
+        "specialties": ["心胸外科", "泌尿外科"],
+        "aliases": ["导丝", "guidewire", "泥鳅导丝"],
+    },
+    "敷料": {
+        "category": "敷料",
+        "specialties": ["普外科", "骨科", "妇产科", "烧伤科"],
+        "aliases": ["敷料", "dressing", "纱布", "敷贴"],
+    },
+    "纱布": {
+        "category": "敷料",
+        "specialties": ["普外科", "骨科", "妇产科", "心胸外科"],
+        "aliases": ["纱布", "gauze", "纱布块", "纱布条"],
+    },
+    "棉球": {
+        "category": "敷料",
+        "specialties": ["普外科", "妇产科", "耳鼻喉科", "眼科"],
+        "aliases": ["棉球", "cotton ball", "棉片"],
+    },
+    "创巾": {
+        "category": "无菌敷料",
+        "specialties": ["普外科", "骨科", "妇产科", "心胸外科"],
+        "aliases": ["创巾", "手术巾", "surgical drape", "洞巾"],
+    },
+    "手套": {
+        "category": "防护用品",
+        "specialties": ["普外科", "骨科", "妇产科", "心胸外科", "泌尿外科", "眼科", "耳鼻喉科"],
+        "aliases": ["手套", "surgical glove", "glove", "无菌手套"],
+    },
+    "口罩": {
+        "category": "防护用品",
+        "specialties": ["普外科", "骨科", "妇产科", "麻醉科"],
+        "aliases": ["口罩", "mask", "外科口罩"],
+    },
+    "手术衣": {
+        "category": "防护用品",
+        "specialties": ["普外科", "骨科", "妇产科"],
+        "aliases": ["手术衣", "gown", "无菌手术衣"],
+    },
+    "无影灯": {
+        "category": "手术设备",
+        "specialties": ["普外科", "骨科", "妇产科", "心胸外科"],
+        "aliases": ["无影灯", "surgical lamp", "operating light"],
+    },
+    "手术床": {
+        "category": "手术设备",
+        "specialties": ["普外科", "骨科", "妇产科", "心胸外科"],
+        "aliases": ["手术床", "operating table", "手术台"],
+    },
+    "麻醉机": {
+        "category": "麻醉设备",
+        "specialties": ["麻醉科"],
+        "aliases": ["麻醉机", "anesthesia machine"],
+    },
+    "监护仪": {
+        "category": "监护设备",
+        "specialties": ["麻醉科", "ICU"],
+        "aliases": ["监护仪", "monitor", "vital sign monitor", "心电监护"],
+    },
 }
 
 
@@ -147,9 +528,10 @@ class InstrumentRecognitionService:
         """建立器械别名索引，用于文本匹配模式"""
         self._alias_index = {}
         for name, info in self._instrument_dict.items():
-            self._alias_index[name.lower()] = (name, info["category"])
+            primary_specialty = info["specialties"][0] if info["specialties"] else None
+            self._alias_index[name.lower()] = (name, info["category"], primary_specialty)
             for alias in info["aliases"]:
-                self._alias_index[alias.lower()] = (name, info["category"])
+                self._alias_index[alias.lower()] = (name, info["category"], primary_specialty)
 
     def _get_yolo_model(self):
         if not self._has_yolo:
@@ -308,13 +690,14 @@ class InstrumentRecognitionService:
                 cls_name = result.names.get(cls_id, f"class_{cls_id}")
                 bbox = [float(x) for x in box.xyxy[0].tolist()]
 
-                matched_name, matched_category = self._match_instrument_name(cls_name)
+                matched_name, matched_category, matched_specialty = self._match_instrument_name(cls_name)
 
                 instruments.append(DetectedInstrument(
                     name=matched_name,
                     confidence=conf,
                     bbox=tuple(bbox),
                     category=matched_category,
+                    specialty=matched_specialty,
                 ))
 
         return instruments
@@ -378,12 +761,13 @@ class InstrumentRecognitionService:
         text_lower = text.lower()
         found = {}
 
-        for alias, (name, category) in self._alias_index.items():
+        for alias, (name, category, specialty) in self._alias_index.items():
             if alias in text_lower or alias in text:
                 if name not in found:
                     found[name] = {
                         "confidence": 0.5,
                         "category": category,
+                        "specialty": specialty,
                         "count": 1,
                     }
                 else:
@@ -398,23 +782,24 @@ class InstrumentRecognitionService:
                 name=name,
                 confidence=conf,
                 category=info["category"],
+                specialty=info["specialty"],
                 count=count,
             ))
 
         return instruments
 
-    def _match_instrument_name(self, raw_name: str) -> Tuple[str, str]:
+    def _match_instrument_name(self, raw_name: str) -> Tuple[str, str, Optional[str]]:
         """将模型输出的类别名匹配到标准手术器械名称"""
         raw_lower = raw_name.lower().strip()
 
         if raw_lower in self._alias_index:
             return self._alias_index[raw_lower]
 
-        for alias, (name, category) in self._alias_index.items():
+        for alias, (name, category, specialty) in self._alias_index.items():
             if alias in raw_lower or raw_lower in alias:
-                return name, category
+                return name, category, specialty
 
-        return raw_name, "其他"
+        return raw_name, "其他", None
 
     def _merge_instruments(self, instruments: List[DetectedInstrument]) -> List[DetectedInstrument]:
         """合并同名器械，取最高置信度"""
@@ -427,6 +812,7 @@ class InstrumentRecognitionService:
                     confidence=instr.confidence,
                     bbox=instr.bbox,
                     category=instr.category,
+                    specialty=instr.specialty,
                     count=instr.count,
                 )
             else:

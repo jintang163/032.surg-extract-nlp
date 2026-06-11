@@ -377,13 +377,20 @@ class MultimodalFusionService:
         ner_entities: Optional[List[Dict[str, Any]]] = None,
         regex_entities: Optional[List[Dict[str, Any]]] = None,
         rule_entities: Optional[List[Dict[str, Any]]] = None,
+        rerun_ner: bool = True,
     ) -> FusionResult:
         """
         完整多模态融合流水线。
 
         1. 文本融合: OCR + ASR -> enhanced_text
-        2. 实体融合: NER实体 + 正则实体 + 规则实体 + ASR关键词
-        3. 器械增强: 器械识别结果补充实体，辅助推断
+        2. 重跑NER: 用增强文本重新抽取实体（可选）
+        3. 实体融合: 重跑NER实体 + 正则实体 + 规则实体 + 器械实体
+        4. 器械增强: 器械识别结果补充实体，辅助推断
+
+        放宽融合条件：
+        - 只要有OCR或ASR其中之一，即可进行文本融合增强
+        - 只要有器械识别结果，即可进行器械辅助增强
+        - 三者有其一即可执行融合流程
         """
         asr_text = None
         asr_keywords = []
@@ -395,9 +402,10 @@ class MultimodalFusionService:
                 from app.services.asr_service import AsrService
                 asr_svc = AsrService()
                 asr_keywords = asr_svc.extract_medical_keywords(asr_text)
-                source_breakdown["ASR"] = len(asr_keywords)
+                source_breakdown["ASR_KEYWORD"] = len(asr_keywords)
 
         enhanced_text = self.fuse_texts(ocr_text, asr_text)
+        text_enhanced = bool((ocr_text and asr_text) or (enhanced_text and enhanced_text != (ocr_text or "")))
 
         instrument_entities = []
         instruments_list = []
@@ -410,11 +418,33 @@ class MultimodalFusionService:
             )
             source_breakdown["IMAGE_INSTRUMENT"] = len(instrument_entities)
 
-        ocr_entities = ner_entities or []
-        source_breakdown["OCR_NER"] = len(ocr_entities)
+        reran_ner = False
+        final_ner_entities = ner_entities or []
+        if rerun_ner and enhanced_text and len(enhanced_text.strip()) > 0:
+            try:
+                from app.services.ner_extract_service import NerExtractService
+                ner_svc = NerExtractService()
+                rerun_result = ner_svc.extract_entities(enhanced_text)
+                if rerun_result and rerun_result.get("success"):
+                    reran_entities = rerun_result.get("entities", [])
+                    if reran_entities:
+                        for ent in reran_entities:
+                            if "source" not in ent:
+                                ent["source"] = "FUSION_MODEL"
+                        final_ner_entities = reran_entities
+                        reran_ner = True
+                        source_breakdown["ENHANCED_NER"] = len(reran_entities)
+                        logger.info(f"[多模态融合] 增强文本重跑NER完成，实体数: {len(reran_entities)}")
+            except Exception as e:
+                logger.warning(f"[多模态融合] 增强文本重跑NER失败，将使用原始实体: {e}")
+                if ner_entities:
+                    source_breakdown["ORIGINAL_NER"] = len(ner_entities)
+        else:
+            if ner_entities:
+                source_breakdown["ORIGINAL_NER"] = len(ner_entities)
 
         all_entities = []
-        all_entities.extend(ocr_entities)
+        all_entities.extend(final_ner_entities)
         all_entities.extend(asr_keywords)
         all_entities.extend(regex_entities or [])
         all_entities.extend(rule_entities or [])
@@ -424,7 +454,7 @@ class MultimodalFusionService:
         source_breakdown["RULE"] = len(rule_entities or [])
 
         merged_entities, stats = self.fuse_entities(
-            ocr_entities=ocr_entities,
+            ocr_entities=final_ner_entities,
             asr_entities=asr_keywords,
             regex_entities=regex_entities,
             rule_entities=rule_entities,
@@ -440,10 +470,14 @@ class MultimodalFusionService:
         )
 
         fusion_stats = {
-            "text_enhanced": bool(asr_text and ocr_text),
+            "text_enhanced": text_enhanced,
+            "reran_ner": reran_ner,
             "ocr_text_length": len(ocr_text or ""),
             "asr_text_length": len(asr_text or ""),
             "enhanced_text_length": len(enhanced_text or ""),
+            "ocr_entity_count": len(ner_entities or []),
+            "asr_entity_count": len(asr_keywords),
+            "fused_entity_count": len(final_entities),
             "instrument_count": len(instruments_list),
             "entity_stats": stats,
             "sources_used": list(source_breakdown.keys()),

@@ -28,4 +28,7 @@ public class MultimodalFusionRequestDTO {
 
     @JsonProperty("rule_entities")
     private List<NerEntityDTO> ruleEntities;
+
+    @JsonProperty("rerun_ner")
+    private Boolean rerunNer;
 }

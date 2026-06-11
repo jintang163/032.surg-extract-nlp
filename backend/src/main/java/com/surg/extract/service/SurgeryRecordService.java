@@ -9,10 +9,12 @@ import com.surg.extract.entity.FieldMapping;
 import com.surg.extract.entity.MedicalRecordHome;
 import com.surg.extract.entity.SurgeryEntity;
 import com.surg.extract.entity.SurgeryRecord;
+import com.surg.extract.entity.SurgeryRecordAttachment;
 import com.surg.extract.feign.NlpServiceClient;
 import com.surg.extract.mapper.FieldMappingMapper;
 import com.surg.extract.mapper.MedicalRecordHomeMapper;
 import com.surg.extract.mapper.SurgeryEntityMapper;
+import com.surg.extract.mapper.SurgeryRecordAttachmentMapper;
 import com.surg.extract.mapper.SurgeryRecordMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -38,6 +40,7 @@ public class SurgeryRecordService {
 
     private final SurgeryRecordMapper surgeryRecordMapper;
     private final SurgeryEntityMapper surgeryEntityMapper;
+    private final SurgeryRecordAttachmentMapper attachmentMapper;
     private final MedicalRecordHomeMapper homePageMapper;
     private final FieldMappingMapper fieldMappingMapper;
     private final FileStorageService fileStorageService;
@@ -74,6 +77,104 @@ public class SurgeryRecordService {
         startProcessingAsync(record.getId());
 
         return convertToQueryDTO(record);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public RecordQueryDTO uploadRecordWithAttachments(
+            MultipartFile mainFile,
+            List<MultipartFile> attachments,
+            RecordUploadDTO uploadDTO) {
+        log.info("开始上传手术记录(多附件): mainFile={}, attachmentCount={}, patientName={}",
+                mainFile.getOriginalFilename(),
+                attachments != null ? attachments.size() : 0,
+                uploadDTO.getPatientName());
+
+        String mainFilePath = fileStorageService.store(mainFile);
+        String mainFileType = fileStorageService.detectFileType(mainFile.getOriginalFilename());
+
+        SurgeryRecord record = new SurgeryRecord();
+        record.setRecordNo("SR" + DateUtil.format(new Date(), "yyyyMMddHHmmss") + IdUtil.getSnowflakeNextIdStr().substring(12));
+        record.setPatientId(uploadDTO.getPatientId());
+        record.setPatientName(uploadDTO.getPatientName());
+        record.setHospitalNo(uploadDTO.getHospitalNo());
+        record.setDepartment(uploadDTO.getDepartment());
+        record.setOriginalFileName(mainFile.getOriginalFilename());
+        record.setFileType(mainFileType);
+        record.setFilePath(mainFilePath);
+        record.setFileSize(mainFile.getSize());
+        record.setUploadUserId(1L);
+        record.setUploadUserName("当前用户");
+        record.setUploadTime(LocalDateTime.now());
+        record.setProcessStatus("PENDING");
+        record.setManualDurationEst(600);
+        record.setDeleted(0);
+
+        surgeryRecordMapper.insert(record);
+        log.info("手术记录已保存: id={}, recordNo={}", record.getId(), record.getRecordNo());
+
+        SurgeryRecordAttachment mainAttachment = new SurgeryRecordAttachment();
+        mainAttachment.setRecordId(record.getId());
+        mainAttachment.setOriginalFileName(mainFile.getOriginalFilename());
+        mainAttachment.setFilePath(mainFilePath);
+        mainAttachment.setFileType(mainFileType);
+        mainAttachment.setFileSize(mainFile.getSize());
+        mainAttachment.setAttachmentType("MAIN");
+        mainAttachment.setProcessStatus("PENDING");
+        mainAttachment.setSortOrder(0);
+        mainAttachment.setDeleted(0);
+        attachmentMapper.insert(mainAttachment);
+
+        if (attachments != null && !attachments.isEmpty()) {
+            int sortOrder = 1;
+            for (MultipartFile file : attachments) {
+                if (file.isEmpty()) continue;
+                String filePath = fileStorageService.store(file);
+                String fileType = fileStorageService.detectFileType(file.getOriginalFilename());
+                String attachmentType = detectAttachmentType(fileType);
+
+                SurgeryRecordAttachment attachment = new SurgeryRecordAttachment();
+                attachment.setRecordId(record.getId());
+                attachment.setOriginalFileName(file.getOriginalFilename());
+                attachment.setFilePath(filePath);
+                attachment.setFileType(fileType);
+                attachment.setFileSize(file.getSize());
+                attachment.setAttachmentType(attachmentType);
+                attachment.setProcessStatus("PENDING");
+                attachment.setSortOrder(sortOrder++);
+                attachment.setDeleted(0);
+                attachmentMapper.insert(attachment);
+
+                log.info("附件已保存: recordId={}, fileName={}, type={}",
+                        record.getId(), file.getOriginalFilename(), attachmentType);
+            }
+        }
+
+        startProcessingAsync(record.getId());
+
+        return convertToQueryDTO(record);
+    }
+
+    private String detectAttachmentType(String fileType) {
+        if (fileType == null) return "OTHER";
+        return switch (fileType.toUpperCase()) {
+            case "AUDIO", "VIDEO" -> "ASR";
+            case "IMAGE" -> "INSTRUMENT";
+            case "TEXT", "WORD", "PDF" -> "OTHER";
+            default -> "OTHER";
+        };
+    }
+
+    public List<RecordAttachmentDTO> getRecordAttachments(Long recordId) {
+        List<SurgeryRecordAttachment> attachments = attachmentMapper.selectByRecordId(recordId);
+        return attachments.stream()
+                .map(this::convertToAttachmentDTO)
+                .collect(Collectors.toList());
+    }
+
+    private RecordAttachmentDTO convertToAttachmentDTO(SurgeryRecordAttachment attachment) {
+        RecordAttachmentDTO dto = new RecordAttachmentDTO();
+        BeanUtils.copyProperties(attachment, dto);
+        return dto;
     }
 
     @Async
@@ -216,6 +317,137 @@ public class SurgeryRecordService {
                 }
             }
 
+            List<SurgeryRecordAttachment> allAttachments = attachmentMapper.selectByRecordId(recordId);
+            List<String> attachmentAsrTexts = new ArrayList<>();
+            List<DetectedInstrumentDTO> attachmentInstruments = new ArrayList<>();
+            double totalAudioDuration = 0.0;
+
+            if (allAttachments != null && !allAttachments.isEmpty()) {
+                for (SurgeryRecordAttachment attachment : allAttachments) {
+                    if (!"PENDING".equals(attachment.getProcessStatus()) && !"SUCCESS".equals(attachment.getProcessStatus())) {
+                        continue;
+                    }
+                    String attType = attachment.getAttachmentType();
+                    String attPath = attachment.getFilePath();
+                    if (attPath == null || attPath.isBlank()) continue;
+
+                    if ("ASR".equals(attType)) {
+                        try {
+                            attachmentMapper.updateStatus(attachment.getId(), "PROCESSING", null);
+                            AsrProcessRequestDTO asrReq = new AsrProcessRequestDTO();
+                            asrReq.setRecordId(recordId);
+                            asrReq.setFilePath(attPath);
+                            asrReq.setFileType(attachment.getFileType());
+                            asrReq.setLanguage("zh");
+
+                            AsrProcessResponseDTO asrResp = nlpServiceClient.processAsrByFilePath(asrReq);
+                            if (Boolean.TRUE.equals(asrResp.getSuccess()) && asrResp.getFullText() != null) {
+                                attachmentAsrTexts.add(asrResp.getFullText());
+                                attachmentMapper.updateExtractedText(attachment.getId(), asrResp.getFullText());
+                                attachmentMapper.updateStatus(attachment.getId(), "SUCCESS", null);
+                                if (asrResp.getDuration() != null) {
+                                    totalAudioDuration += asrResp.getDuration();
+                                }
+                                log.info("附件ASR处理成功: attachmentId={}, textLength={}",
+                                        attachment.getId(), asrResp.getFullText().length());
+                            } else {
+                                String err = asrResp.getErrorMessage() != null ? asrResp.getErrorMessage() : "ASR识别失败";
+                                attachmentMapper.updateStatus(attachment.getId(), "FAILED", err);
+                                log.warn("附件ASR处理失败: attachmentId={}, error={}", attachment.getId(), err);
+                            }
+                        } catch (Exception e) {
+                            attachmentMapper.updateStatus(attachment.getId(), "FAILED", e.getMessage());
+                            log.warn("附件ASR处理异常: attachmentId={}, error={}", attachment.getId(), e.getMessage());
+                        }
+                    } else if ("INSTRUMENT".equals(attType)) {
+                        try {
+                            attachmentMapper.updateStatus(attachment.getId(), "PROCESSING", null);
+                            InstrumentRecognitionRequestDTO instrReq = new InstrumentRecognitionRequestDTO();
+                            instrReq.setRecordId(recordId);
+                            instrReq.setFilePath(attPath);
+                            instrReq.setMode("hybrid");
+                            instrReq.setConfidenceThreshold(0.3);
+
+                            InstrumentRecognitionResponseDTO instrResp =
+                                    nlpServiceClient.recognizeInstrumentByFilePath(instrReq);
+
+                            if (Boolean.TRUE.equals(instrResp.getSuccess())
+                                    && instrResp.getInstruments() != null
+                                    && !instrResp.getInstruments().isEmpty()) {
+                                attachmentInstruments.addAll(instrResp.getInstruments());
+                                try {
+                                    attachmentMapper.updateExtractedText(
+                                            attachment.getId(),
+                                            objectMapper.writeValueAsString(instrResp.getInstruments())
+                                    );
+                                } catch (JsonProcessingException e) {
+                                    log.warn("序列化附件器械结果失败: {}", e.getMessage());
+                                }
+                                attachmentMapper.updateStatus(attachment.getId(), "SUCCESS", null);
+                                log.info("附件器械识别成功: attachmentId={}, count={}",
+                                        attachment.getId(), instrResp.getInstruments().size());
+                            } else {
+                                attachmentMapper.updateStatus(attachment.getId(), "SUCCESS", "未识别到器械");
+                            }
+                        } catch (Exception e) {
+                            attachmentMapper.updateStatus(attachment.getId(), "FAILED", e.getMessage());
+                            log.warn("附件器械识别异常: attachmentId={}, error={}", attachment.getId(), e.getMessage());
+                        }
+                    }
+                }
+            }
+
+            if (!attachmentAsrTexts.isEmpty()) {
+                String mergedAsrText = String.join("\n\n", attachmentAsrTexts);
+                if (asrText != null && !asrText.isBlank()) {
+                    asrText = asrText + "\n\n" + mergedAsrText;
+                } else {
+                    asrText = mergedAsrText;
+                }
+                if (totalAudioDuration > 0) {
+                    if (record.getAudioDuration() != null) {
+                        record.setAudioDuration(record.getAudioDuration() + totalAudioDuration);
+                    } else {
+                        record.setAudioDuration(totalAudioDuration);
+                    }
+                }
+                record.setAsrText(asrText);
+                if (processedText == null || processedText.isBlank()) {
+                    processedText = asrText;
+                    record.setProcessedText(asrText);
+                }
+            }
+
+            if (!attachmentInstruments.isEmpty()) {
+                Map<String, DetectedInstrumentDTO> instrMap = new LinkedHashMap<>();
+                for (DetectedInstrumentDTO inst : instruments) {
+                    instrMap.put(inst.getName(), inst);
+                }
+                for (DetectedInstrumentDTO inst : attachmentInstruments) {
+                    String key = inst.getName();
+                    if (instrMap.containsKey(key)) {
+                        DetectedInstrumentDTO existing = instrMap.get(key);
+                        if (inst.getConfidence() != null && (existing.getConfidence() == null
+                                || inst.getConfidence() > existing.getConfidence())) {
+                            existing.setConfidence(inst.getConfidence());
+                        }
+                        int existingCount = existing.getCount() != null ? existing.getCount() : 1;
+                        int addCount = inst.getCount() != null ? inst.getCount() : 1;
+                        existing.setCount(existingCount + addCount);
+                    } else {
+                        instrMap.put(key, inst);
+                    }
+                }
+                instruments = new ArrayList<>(instrMap.values());
+                try {
+                    record.setInstruments(objectMapper.writeValueAsString(instruments));
+                } catch (JsonProcessingException e) {
+                    log.warn("序列化合并后器械列表失败: {}", e.getMessage());
+                }
+            }
+
+            surgeryRecordMapper.updateById(record);
+
             surgeryRecordMapper.updateStatus(recordId, "NER_PROCESSING", null);
             record.setNerStartTime(LocalDateTime.now());
 
@@ -254,12 +486,15 @@ public class SurgeryRecordService {
                 allEntities.addAll(nerResponse.getEntities());
             }
 
-            boolean hasMultimodal = (ocrText != null && asrText != null) || !instruments.isEmpty();
+            boolean hasOcrText = ocrText != null && !ocrText.isBlank();
+            boolean hasAsrText = asrText != null && !asrText.isBlank();
+            boolean hasMultimodal = hasOcrText || hasAsrText || !instruments.isEmpty();
             if (hasMultimodal) {
                 try {
                     MultimodalFusionRequestDTO fusionRequest = new MultimodalFusionRequestDTO();
                     fusionRequest.setRecordId(recordId);
                     fusionRequest.setOcrText(ocrText);
+                    fusionRequest.setRerunNer(true);
                     if (asrText != null) {
                         Map<String, Object> asrResultMap = new HashMap<>();
                         asrResultMap.put("success", true);

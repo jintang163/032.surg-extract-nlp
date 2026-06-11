@@ -85,6 +85,31 @@ CREATE TABLE `surgery_record` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='手术记录表';
 
 -- -----------------------------------------------------------
+-- 2-1. 手术记录附件表
+-- -----------------------------------------------------------
+DROP TABLE IF EXISTS `surgery_record_attachment`;
+CREATE TABLE `surgery_record_attachment` (
+    `id`                  BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `record_id`           BIGINT          NOT NULL COMMENT '手术记录ID',
+    `original_file_name`  VARCHAR(255)    NOT NULL COMMENT '原始文件名',
+    `file_path`           VARCHAR(512)    NOT NULL COMMENT '文件存储路径',
+    `file_type`           VARCHAR(32)     NOT NULL COMMENT '文件类型: TEXT, WORD, PDF, IMAGE, AUDIO, VIDEO',
+    `file_size`           BIGINT          DEFAULT NULL COMMENT '文件大小(字节)',
+    `attachment_type`     VARCHAR(32)     NOT NULL DEFAULT 'OTHER' COMMENT '附件类型: MAIN-主文档, ASR-语音旁白, INSTRUMENT-器械图谱, OTHER-其他',
+    `process_status`      VARCHAR(32)     NOT NULL DEFAULT 'PENDING' COMMENT '处理状态: PENDING-待处理, PROCESSING-处理中, SUCCESS-成功, FAILED-失败',
+    `process_message`     VARCHAR(512)    DEFAULT NULL COMMENT '处理信息',
+    `extracted_text`      LONGTEXT        DEFAULT NULL COMMENT '提取的文本(OCR/ASR)',
+    `sort_order`          INT             DEFAULT 0 COMMENT '排序号',
+    `created_time`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_time`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted`             TINYINT         NOT NULL DEFAULT 0 COMMENT '逻辑删除: 0-未删除, 1-已删除',
+    PRIMARY KEY (`id`),
+    KEY `idx_record_id` (`record_id`),
+    KEY `idx_attachment_type` (`attachment_type`),
+    KEY `idx_process_status` (`process_status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='手术记录附件表';
+
+-- -----------------------------------------------------------
 -- 3. 实体抽取结果表
 -- -----------------------------------------------------------
 DROP TABLE IF EXISTS `surgery_entity`;

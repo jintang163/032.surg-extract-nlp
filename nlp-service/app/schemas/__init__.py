@@ -64,9 +64,13 @@ class InstrumentRecognitionRequest(BaseModel):
 
 class DetectedInstrument(BaseModel):
     name: str = Field(..., description="器械名称")
+    instrument_name: Optional[str] = Field(None, description="器械名称（别名）")
+    instrument_code: Optional[str] = Field(None, description="器械编码")
     confidence: float = Field(..., description="置信度", ge=0.0, le=1.0)
     bbox: Optional[List[float]] = Field(None, description="边界框 [x1, y1, x2, y2]")
+    position: Optional[Dict[str, float]] = Field(None, description="位置 {x, y, width, height}")
     category: Optional[str] = Field(None, description="器械分类")
+    specialty: Optional[str] = Field(None, description="所属专科")
     count: Optional[int] = Field(None, description="数量")
 
 
@@ -82,6 +86,8 @@ class InstrumentRecognitionResponse(BaseModel):
 class InstrumentCatalogResponse(BaseModel):
     total_count: int = Field(..., description="支持的器械总数")
     categories: Dict[str, List[str]] = Field(..., description="按分类的器械列表")
+    specialties: Optional[List[str]] = Field(None, description="专科列表")
+    instruments_by_specialty: Optional[Dict[str, List[str]]] = Field(None, description="按专科的器械列表")
 
 
 class MultimodalFusionRequest(BaseModel):
@@ -92,6 +98,7 @@ class MultimodalFusionRequest(BaseModel):
     ner_entities: Optional[List[NerEntity]] = Field(None, description="NER实体列表")
     regex_entities: Optional[List[NerEntity]] = Field(None, description="正则实体列表")
     rule_entities: Optional[List[NerEntity]] = Field(None, description="规则实体列表")
+    rerun_ner: Optional[bool] = Field(True, description="是否用增强文本重跑NER")
 
 
 class MultimodalFusionResponse(BaseModel):

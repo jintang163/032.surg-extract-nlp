@@ -374,6 +374,7 @@ async def api_multimodal_fuse(
             ner_entities=ner_entities,
             regex_entities=regex_entities,
             rule_entities=rule_entities,
+            rerun_ner=request.rerun_ner if request.rerun_ner is not None else True,
         )
 
         response = {
