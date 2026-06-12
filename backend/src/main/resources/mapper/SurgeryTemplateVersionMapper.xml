@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.surg.extract.mapper.SurgeryTemplateVersionMapper">
+
+    <resultMap id="BaseResultMap" type="com.surg.extract.entity.SurgeryTemplateVersion">
+        <id column="id" property="id"/>
+        <result column="template_id" property="templateId"/>
+        <result column="version_no" property="versionNo"/>
+        <result column="template_content" property="templateContent"/>
+        <result column="placeholders" property="placeholders"/>
+        <result column="change_log" property="changeLog"/>
+        <result column="is_current" property="isCurrent"/>
+        <result column="created_user_id" property="createdUserId"/>
+        <result column="created_user_name" property="createdUserName"/>
+        <result column="created_time" property="createdTime"/>
+    </resultMap>
+
+    <select id="selectByTemplateId" resultMap="BaseResultMap">
+        SELECT * FROM surgery_template_version
+        WHERE template_id = #{templateId}
+        ORDER BY version_no DESC
+    </select>
+
+    <update id="clearCurrentVersion">
+        UPDATE surgery_template_version
+        SET is_current = 0
+        WHERE template_id = #{templateId}
+    </update>
+
+    <select id="selectLatestVersion" resultMap="BaseResultMap">
+        SELECT * FROM surgery_template_version
+        WHERE template_id = #{templateId}
+        ORDER BY version_no DESC
+        LIMIT 1
+    </select>
+
+</mapper>

@@ -30,6 +30,10 @@ public enum ErrorCode {
 
     HIS_SYNC_ERROR(5001, "HIS同步失败"),
 
+    TEMPLATE_NOT_FOUND(6001, "模板不存在"),
+    TEMPLATE_CODE_DUPLICATE(6002, "模板编码已存在"),
+    TEMPLATE_VERSION_NOT_FOUND(6003, "模板版本不存在"),
+
     SYSTEM_ERROR(9999, "系统内部错误");
 
     private final Integer code;

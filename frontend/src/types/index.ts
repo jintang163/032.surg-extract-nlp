@@ -288,3 +288,96 @@ export interface EfficiencyStats {
   efficiencyRate: string
   avgFillSeconds: number
 }
+
+export interface Placeholder {
+  name: string
+  label: string
+  entityType?: EntityType | string
+  description?: string
+  required?: boolean
+  defaultValue?: string
+}
+
+export type TemplateStatus = 'DRAFT' | 'ACTIVE' | 'INACTIVE'
+
+export const TemplateStatusMap: Record<TemplateStatus, { label: string; color: string }> = {
+  DRAFT: { label: '草稿', color: 'default' },
+  ACTIVE: { label: '启用', color: 'success' },
+  INACTIVE: { label: '停用', color: 'warning' },
+}
+
+export interface SurgeryTemplate {
+  id: number
+  templateCode: string
+  templateName: string
+  surgeryType: string
+  surgeryCode?: string
+  department?: string
+  templateContent: string
+  placeholders: Placeholder[]
+  currentVersion: number
+  status: TemplateStatus
+  isDefault: number
+  description?: string
+  tags?: string
+  sortOrder: number
+  useCount: number
+  createdUserName?: string
+  updatedUserName?: string
+  createdTime: string
+  updatedTime: string
+}
+
+export interface SurgeryTemplateVersion {
+  id: number
+  templateId: number
+  versionNo: number
+  templateContent: string
+  placeholders: Placeholder[]
+  changeLog?: string
+  isCurrent: number
+  createdUserName?: string
+  createdTime: string
+}
+
+export interface SurgeryTemplateCreateForm {
+  templateCode: string
+  templateName: string
+  surgeryType: string
+  surgeryCode?: string
+  department?: string
+  templateContent: string
+  placeholders: Placeholder[]
+  description?: string
+  tags?: string
+  sortOrder?: number
+  changeLog?: string
+}
+
+export interface SurgeryTemplateUpdateForm {
+  templateName?: string
+  surgeryType?: string
+  surgeryCode?: string
+  department?: string
+  templateContent?: string
+  placeholders?: Placeholder[]
+  status?: TemplateStatus
+  isDefault?: number
+  description?: string
+  tags?: string
+  sortOrder?: number
+  changeLog?: string
+}
+
+export interface TemplateImportData {
+  templateCode: string
+  templateName: string
+  surgeryType: string
+  surgeryCode?: string
+  department?: string
+  templateContent: string
+  placeholders: Placeholder[]
+  description?: string
+  tags?: string
+  sortOrder?: number
+}

@@ -200,3 +200,45 @@ export const homePageApi = {
 
   getEfficiencyStats: () => http.get<any>('/homepage/stats/efficiency'),
 }
+
+export const templateApi = {
+  list: (params: {
+    templateName?: string
+    surgeryType?: string
+    department?: string
+    status?: string
+    pageNum: number
+    pageSize: number
+  }) => http.get<any>('/templates/list', { params }),
+
+  available: (params?: { surgeryType?: string; department?: string }) =>
+    http.get<any[]>('/templates/available', { params }),
+
+  detail: (id: number) => http.get<any>(`/templates/${id}`),
+
+  create: (data: any) => http.post<any>('/templates', data),
+
+  update: (id: number, data: any) => http.put<any>(`/templates/${id}`, data),
+
+  delete: (id: number) => http.delete<void>(`/templates/${id}`),
+
+  getVersions: (id: number) => http.get<any[]>(`/templates/${id}/versions`),
+
+  getVersion: (id: number, versionNo: number) => http.get<any>(`/templates/${id}/versions/${versionNo}`),
+
+  revertVersion: (id: number, versionNo: number, changeLog?: string) =>
+    http.post<any>(`/templates/${id}/versions/revert/${versionNo}`, null, { params: { changeLog } }),
+
+  fill: (id: number, values: Record<string, string>) =>
+    http.post<string>(`/templates/${id}/fill`, values),
+
+  fillFromRecord: (id: number, recordId: number) =>
+    http.post<string>(`/templates/${id}/fill/record/${recordId}`),
+
+  extractPlaceholders: (content: string) =>
+    http.post<string[]>('/templates/extract-placeholders', { content }),
+
+  exportTemplate: (id: number) => http.get<Record<string, any>>(`/templates/${id}/export`),
+
+  importTemplate: (data: any) => http.post<any>('/templates/import', data),
+}

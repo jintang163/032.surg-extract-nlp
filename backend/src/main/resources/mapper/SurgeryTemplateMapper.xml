@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.surg.extract.mapper.SurgeryTemplateMapper">
+
+    <resultMap id="BaseResultMap" type="com.surg.extract.entity.SurgeryTemplate">
+        <id column="id" property="id"/>
+        <result column="template_code" property="templateCode"/>
+        <result column="template_name" property="templateName"/>
+        <result column="surgery_type" property="surgeryType"/>
+        <result column="surgery_code" property="surgeryCode"/>
+        <result column="department" property="department"/>
+        <result column="template_content" property="templateContent"/>
+        <result column="placeholders" property="placeholders"/>
+        <result column="current_version" property="currentVersion"/>
+        <result column="status" property="status"/>
+        <result column="is_default" property="isDefault"/>
+        <result column="description" property="description"/>
+        <result column="tags" property="tags"/>
+        <result column="sort_order" property="sortOrder"/>
+        <result column="use_count" property="useCount"/>
+        <result column="created_user_id" property="createdUserId"/>
+        <result column="created_user_name" property="createdUserName"/>
+        <result column="updated_user_id" property="updatedUserId"/>
+        <result column="updated_user_name" property="updatedUserName"/>
+        <result column="created_time" property="createdTime"/>
+        <result column="updated_time" property="updatedTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <select id="selectByConditions" resultMap="BaseResultMap">
+        SELECT * FROM surgery_template
+        WHERE deleted = 0
+        <if test="templateName != null and templateName != ''">
+            AND template_name LIKE CONCAT('%', #{templateName}, '%')
+        </if>
+        <if test="surgeryType != null and surgeryType != ''">
+            AND surgery_type LIKE CONCAT('%', #{surgeryType}, '%')
+        </if>
+        <if test="department != null and department != ''">
+            AND (department = #{department} OR department IS NULL)
+        </if>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY sort_order ASC, is_default DESC, created_time DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countByConditions" resultType="java.lang.Long">
+        SELECT COUNT(*) FROM surgery_template
+        WHERE deleted = 0
+        <if test="templateName != null and templateName != ''">
+            AND template_name LIKE CONCAT('%', #{templateName}, '%')
+        </if>
+        <if test="surgeryType != null and surgeryType != ''">
+            AND surgery_type LIKE CONCAT('%', #{surgeryType}, '%')
+        </if>
+        <if test="department != null and department != ''">
+            AND (department = #{department} OR department IS NULL)
+        </if>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+    </select>
+
+    <update id="incrementUseCount">
+        UPDATE surgery_template
+        SET use_count = use_count + 1,
+            updated_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectAvailableTemplates" resultMap="BaseResultMap">
+        SELECT * FROM surgery_template
+        WHERE deleted = 0
+        AND status = 'ACTIVE'
+        <if test="surgeryType != null and surgeryType != ''">
+            AND surgery_type LIKE CONCAT('%', #{surgeryType}, '%')
+        </if>
+        <if test="department != null and department != ''">
+            AND (department = #{department} OR department IS NULL)
+        </if>
+        ORDER BY is_default DESC, sort_order ASC, use_count DESC
+    </select>
+
+</mapper>

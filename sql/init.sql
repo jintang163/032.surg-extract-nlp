@@ -327,3 +327,209 @@ INSERT INTO `extraction_rule` (`rule_name`, `rule_type`, `entity_type`, `pattern
 ('助手-规则1', 'REGEX', 'ASSISTANT', '助手\s*[:：]\s*([\u4e00-\u9fa5\s、,]{2,64})', 100, 1, '匹配"助手：王医生、赵医生"格式'),
 ('麻醉医生-规则1', 'REGEX', 'ANESTHESIOLOGIST', '麻醉医师?\s*[:：]\s*([\u4e00-\u9fa5]{2,6})', 100, 1, '匹配"麻醉医师：陈医生"格式'),
 ('并发症-规则1', 'REGEX', 'COMPLICATION', '(?:并发症|术中意外|术中情况)\s*[:：]\s*([\u4e00-\u9fa5，,。；;\s]{2,256})', 100, 1, '匹配"并发症：无"格式');
+
+-- -----------------------------------------------------------
+-- 8. 手术模板表
+-- -----------------------------------------------------------
+DROP TABLE IF EXISTS `surgery_template`;
+CREATE TABLE `surgery_template` (
+    `id`                  BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `template_code`       VARCHAR(64)     NOT NULL COMMENT '模板编码(业务唯一)',
+    `template_name`       VARCHAR(128)    NOT NULL COMMENT '模板名称',
+    `surgery_type`        VARCHAR(128)    NOT NULL COMMENT '手术类型(如:阑尾切除、剖宫产)',
+    `surgery_code`        VARCHAR(32)     DEFAULT NULL COMMENT '手术编码(ICD-9-CM-3)',
+    `department`          VARCHAR(128)    DEFAULT NULL COMMENT '适用科室, NULL表示全院通用',
+    `template_content`    LONGTEXT        NOT NULL COMMENT '模板内容(含占位符)',
+    `placeholders`        JSON            DEFAULT NULL COMMENT '占位符定义列表(JSON)',
+    `current_version`     INT             NOT NULL DEFAULT 1 COMMENT '当前版本号',
+    `status`              VARCHAR(32)     NOT NULL DEFAULT 'ACTIVE' COMMENT '状态: DRAFT-草稿, ACTIVE-启用, INACTIVE-停用',
+    `is_default`          TINYINT         NOT NULL DEFAULT 0 COMMENT '是否默认模板: 0-否, 1-是',
+    `description`         VARCHAR(512)    DEFAULT NULL COMMENT '模板说明',
+    `tags`                VARCHAR(256)    DEFAULT NULL COMMENT '标签(逗号分隔)',
+    `sort_order`          INT             DEFAULT 0 COMMENT '排序号',
+    `use_count`           INT             DEFAULT 0 COMMENT '使用次数',
+    `created_user_id`     BIGINT          DEFAULT NULL COMMENT '创建人ID',
+    `created_user_name`   VARCHAR(64)     DEFAULT NULL COMMENT '创建人姓名',
+    `updated_user_id`     BIGINT          DEFAULT NULL COMMENT '更新人ID',
+    `updated_user_name`   VARCHAR(64)     DEFAULT NULL COMMENT '更新人姓名',
+    `created_time`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_time`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted`             TINYINT         NOT NULL DEFAULT 0 COMMENT '逻辑删除: 0-未删除, 1-已删除',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_template_code` (`template_code`),
+    KEY `idx_surgery_type` (`surgery_type`),
+    KEY `idx_department` (`department`),
+    KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='手术模板表';
+
+-- -----------------------------------------------------------
+-- 9. 手术模板版本表
+-- -----------------------------------------------------------
+DROP TABLE IF EXISTS `surgery_template_version`;
+CREATE TABLE `surgery_template_version` (
+    `id`                  BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `template_id`         BIGINT          NOT NULL COMMENT '模板ID(关联surgery_template)',
+    `version_no`          INT             NOT NULL COMMENT '版本号(从1开始递增)',
+    `template_content`    LONGTEXT        NOT NULL COMMENT '该版本的模板内容',
+    `placeholders`        JSON            DEFAULT NULL COMMENT '该版本的占位符定义',
+    `change_log`          VARCHAR(512)    DEFAULT NULL COMMENT '版本变更说明',
+    `is_current`          TINYINT         NOT NULL DEFAULT 0 COMMENT '是否当前版本: 0-否, 1-是',
+    `created_user_id`     BIGINT          DEFAULT NULL COMMENT '创建人ID',
+    `created_user_name`   VARCHAR(64)     DEFAULT NULL COMMENT '创建人姓名',
+    `created_time`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_template_version` (`template_id`, `version_no`),
+    KEY `idx_template_id` (`template_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='手术模板版本历史表';
+
+-- ============================================================
+-- 初始化手术模板数据
+-- ============================================================
+
+-- 初始化手术模板(常见手术类型)
+INSERT INTO `surgery_template` (`template_code`, `template_name`, `surgery_type`, `surgery_code`, `department`, `template_content`, `current_version`, `status`, `is_default`, `description`, `sort_order`, `created_user_name`) VALUES
+('TPL-LAP-APPENDECTOMY', '腹腔镜阑尾切除术模板', '腹腔镜阑尾切除术', '47.01', '普外科',
+'术前诊断：${术前诊断}
+术后诊断：${术后诊断}
+手术名称：${手术名称}
+手术日期：${手术日期}
+手术医生：${手术医生}
+第一助手：${第一助手}
+第二助手：${第二助手}
+麻醉方式：${麻醉方式}
+麻醉医生：${麻醉医生}
+器械护士：${器械护士}
+巡回护士：${巡回护士}
+切口等级：${切口等级}
+切口愈合：${切口愈合}
+
+手术经过：
+患者取仰卧位，${麻醉方式}满意后，常规消毒铺巾。
+于脐上缘做一弧形切口，长约1cm，建立气腹，压力维持在12-14mmHg。
+置入10mm Trocar及腹腔镜，探查腹腔见：阑尾位于${阑尾位置}，${阑尾情况描述}。
+分别于麦氏点及反麦氏点置入5mm Trocar，分离阑尾系膜，Hem-o-lok夹闭阑尾动脉。
+距盲肠0.5cm处用可吸收夹夹闭阑尾根部，切除阑尾，标本装入标本袋取出。
+冲洗腹腔，确认无活动性出血，清点器械纱布无误，逐层缝合切口。
+术中出血约${失血量}ml，输液${输液量}ml，输血${输血量}ml。
+术中患者生命体征平稳，术毕安返病房。
+
+术中并发症：${术中并发症}
+', 1, 'ACTIVE', 1, '普外科腹腔镜阑尾切除术标准模板', 1, '系统管理员'),
+
+('TPL-CESAREAN-SECTION', '剖宫产术模板', '子宫下段剖宫产术', '74.1', '妇产科',
+'术前诊断：${术前诊断}
+术后诊断：${术后诊断}
+手术名称：${手术名称}
+手术日期：${手术日期}
+手术医生：${手术医生}
+第一助手：${第一助手}
+麻醉方式：${麻醉方式}
+麻醉医生：${麻醉医生}
+器械护士：${器械护士}
+巡回护士：${巡回护士}
+切口等级：${切口等级}
+切口愈合：${切口愈合}
+
+手术经过：
+患者取仰卧位，${麻醉方式}满意后，常规消毒铺巾，留置导尿管。
+取下腹正中横切口，长约10cm，逐层切开腹壁各层。
+探查子宫：子宫增大如孕${孕周}周大小，子宫下段形成良好。
+于子宫下段做一横切口，长约3cm，刺破羊膜囊，吸净羊水。
+以手扩张子宫切口至约10cm，娩出胎儿${胎儿性别}，体重${胎儿体重}g，Apgar评分：1分钟${apgar1}分，5分钟${apgar5}分。
+胎盘胎膜娩出完整，子宫肌层注射缩宫素20U。
+用1号可吸收线连续缝合子宫肌层，再连续缝合浆膜层。
+探查双侧附件未见明显异常。
+冲洗腹腔，清点器械纱布无误，逐层缝合腹壁各层。
+术中出血约${失血量}ml，输液${输液量}ml，输血${输血量}ml。
+术中患者生命体征平稳，术毕安返病房。
+
+术中并发症：${术中并发症}
+', 1, 'ACTIVE', 1, '妇产科剖宫产术标准模板', 2, '系统管理员'),
+
+('TPL-CHOLECYSTECTOMY', '腹腔镜胆囊切除术模板', '腹腔镜胆囊切除术', '51.23', '普外科',
+'术前诊断：${术前诊断}
+术后诊断：${术后诊断}
+手术名称：${手术名称}
+手术日期：${手术日期}
+手术医生：${手术医生}
+第一助手：${第一助手}
+麻醉方式：${麻醉方式}
+麻醉医生：${麻醉医生}
+器械护士：${器械护士}
+巡回护士：${巡回护士}
+切口等级：${切口等级}
+切口愈合：${切口愈合}
+
+手术经过：
+患者取仰卧位，${麻醉方式}满意后，常规消毒铺巾。
+于脐上缘做一弧形切口，长约1cm，建立气腹，压力维持在12-14mmHg。
+置入10mm Trocar及腹腔镜，探查腹腔见：胆囊${胆囊大小}，${胆囊壁情况}，胆囊内见${结石情况}。
+于剑突下2cm、右锁骨中线肋缘下2cm及右腋前线肋缘下2cm分别置入5mm Trocar。
+分离胆囊三角，显露胆囊管及胆囊动脉，分别以Hem-o-lok夹闭后离断。
+顺行剥离胆囊床，完整切除胆囊，装入标本袋取出。
+冲洗胆囊床，确认无活动性出血及胆漏，清点器械纱布无误，缝合切口。
+术中出血约${失血量}ml，输液${输液量}ml。
+术中患者生命体征平稳，术毕安返病房。
+
+术中并发症：${术中并发症}
+', 1, 'ACTIVE', 1, '普外科腹腔镜胆囊切除术标准模板', 3, '系统管理员'),
+
+('TPL-HERNIA-REPAIR', '腹股沟疝无张力修补术模板', '腹股沟疝无张力修补术', '53.05', '普外科',
+'术前诊断：${术前诊断}
+术后诊断：${术后诊断}
+手术名称：${手术名称}
+手术日期：${手术日期}
+手术医生：${手术医生}
+第一助手：${第一助手}
+麻醉方式：${麻醉方式}
+麻醉医生：${麻醉医生}
+器械护士：${器械护士}
+巡回护士：${巡回护士}
+切口等级：${切口等级}
+切口愈合：${切口愈合}
+
+手术经过：
+患者取仰卧位，${麻醉方式}满意后，常规消毒铺巾。
+于腹股沟韧带中点上方2cm处做一斜切口，长约5cm，逐层切开皮肤、皮下组织、腹外斜肌腱膜。
+显露精索，于精索内前方找到疝囊，${疝囊大小}，疝内容物为${疝内容物}。
+游离疝囊至疝囊颈，高位结扎疝囊。
+于精索后方置入疝补片，覆盖耻骨肌孔，固定补片。
+清点器械纱布无误，逐层缝合腹外斜肌腱膜、皮下组织及皮肤。
+术中出血约${失血量}ml，输液${输液量}ml。
+术中患者生命体征平稳，术毕安返病房。
+
+术中并发症：${术中并发症}
+', 1, 'ACTIVE', 0, '普外科腹股沟疝无张力修补术标准模板', 4, '系统管理员'),
+
+('TPL-THYROIDECTOMY', '甲状腺次全切除术模板', '甲状腺次全切除术', '06.39', '普外科',
+'术前诊断：${术前诊断}
+术后诊断：${术后诊断}
+手术名称：${手术名称}
+手术日期：${手术日期}
+手术医生：${手术医生}
+第一助手：${第一助手}
+麻醉方式：${麻醉方式}
+麻醉医生：${麻醉医生}
+器械护士：${器械护士}
+巡回护士：${巡回护士}
+切口等级：${切口等级}
+切口愈合：${切口愈合}
+
+手术经过：
+患者取仰卧位，颈肩部垫高，${麻醉方式}满意后，常规消毒铺巾。
+于胸骨切迹上方2cm处做一横弧形切口，长约6-8cm，逐层切开皮肤、皮下组织、颈阔肌。
+游离皮瓣，上至甲状软骨，下至胸骨切迹，切开颈白线，分离舌骨下肌群。
+显露甲状腺，探查见：${甲状腺情况}。
+处理甲状腺上极血管，双重结扎后切断。处理甲状腺中静脉及下极血管，结扎切断。
+于气管前间隙游离甲状腺，保留甲状腺背侧被膜及甲状旁腺，切除${切除范围}。
+严密止血，放置引流管1根，清点器械纱布无误，逐层缝合切口。
+术中出血约${失血量}ml，输液${输液量}ml。
+术中患者生命体征平稳，术毕安返病房。
+
+术中并发症：${术中并发症}
+', 1, 'ACTIVE', 0, '普外科甲状腺次全切除术标准模板', 5, '系统管理员');
+
+-- 初始化模板版本记录
+INSERT INTO `surgery_template_version` (`template_id`, `version_no`, `template_content`, `change_log`, `is_current`, `created_user_name`)
+SELECT id, 1, template_content, '初始版本', 1, created_user_name
+FROM surgery_template;

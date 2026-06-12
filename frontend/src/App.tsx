@@ -6,6 +6,8 @@ import Dashboard from '@/pages/Dashboard'
 import RecordList from '@/pages/RecordList'
 import RecordDetail from '@/pages/RecordDetail'
 import HomePageFill from '@/pages/HomePageFill'
+import SurgeryTemplateList from '@/pages/SurgeryTemplateList'
+import SurgeryTemplateEditor from '@/pages/SurgeryTemplateEditor'
 import ProtectedRoute from '@/components/ProtectedRoute'
 
 const App: React.FC = () => {
@@ -25,6 +27,9 @@ const App: React.FC = () => {
         <Route path="records" element={<RecordList />} />
         <Route path="records/:id" element={<RecordDetail />} />
         <Route path="homepage/:recordId" element={<HomePageFill />} />
+        <Route path="templates" element={<SurgeryTemplateList />} />
+        <Route path="templates/new" element={<SurgeryTemplateEditor />} />
+        <Route path="templates/:id/edit" element={<SurgeryTemplateEditor />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

@@ -9,6 +9,7 @@ import {
   SettingOutlined,
   BellOutlined,
   MedicineBoxOutlined,
+  FileMarkdownOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
@@ -33,12 +34,19 @@ const MainLayout: React.FC = () => {
       label: '手术记录管理',
       onClick: () => navigate('/records'),
     },
+    {
+      key: '/templates',
+      icon: <FileMarkdownOutlined />,
+      label: '手术模板管理',
+      onClick: () => navigate('/templates'),
+    },
   ]
 
   const getActiveKey = () => {
     const path = location.pathname
     if (path.startsWith('/records')) return '/records'
     if (path.startsWith('/homepage')) return '/records'
+    if (path.startsWith('/templates')) return '/templates'
     return path
   }
 
