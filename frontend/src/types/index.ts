@@ -381,3 +381,73 @@ export interface TemplateImportData {
   tags?: string
   sortOrder?: number
 }
+
+export type VoiceMessageType =
+  | 'SESSION_STARTED'
+  | 'SESSION_STOPPED'
+  | 'PARTIAL'
+  | 'FINAL_SEGMENT'
+  | 'HOME_PAGE_UPDATE'
+  | 'ENTITY_UPDATE'
+  | 'ERROR'
+  | 'PONG'
+
+export interface VoiceStreamMessage {
+  type: VoiceMessageType
+  sessionId: string
+  text?: string
+  isFinal?: boolean
+  errorMsg?: string
+  data?: any
+  timestamp?: string
+}
+
+export interface VoiceSession {
+  sessionId: string
+  recordId?: number
+  wsUrl: string
+  language: string
+  enableAutoPunctuation: boolean
+  enableRealTimeNer: boolean
+  startTime: string
+}
+
+export interface HomePageField {
+  key: string
+  label: string
+  value: any
+  source?: string
+  updatedAt?: string
+}
+
+export const HOME_PAGE_FIELDS: HomePageField[] = [
+  { key: 'patientName', label: '患者姓名' },
+  { key: 'gender', label: '性别' },
+  { key: 'age', label: '年龄' },
+  { key: 'hospitalNo', label: '住院号' },
+  { key: 'department', label: '科室' },
+  { key: 'admissionDiagnosis', label: '入院诊断' },
+  { key: 'dischargeDiagnosis', label: '出院诊断' },
+  { key: 'surgeryDate', label: '手术日期' },
+  { key: 'surgeryName', label: '手术名称' },
+  { key: 'surgeryCode', label: '手术编码' },
+  { key: 'incisionLevel', label: '切口等级' },
+  { key: 'incisionHealing', label: '切口愈合' },
+  { key: 'anesthesiaType', label: '麻醉方式' },
+  { key: 'anesthesiaCode', label: '麻醉编码' },
+  { key: 'bloodLoss', label: '失血量(ml)' },
+  { key: 'bloodTransfusion', label: '输血量(ml)' },
+  { key: 'fluidInfusion', label: '输液量(ml)' },
+  { key: 'surgeon', label: '术者' },
+  { key: 'assistant1', label: '第一助手' },
+  { key: 'anesthesiologist', label: '麻醉医师' },
+  { key: 'scrubNurse', label: '器械护士' },
+  { key: 'circulatingNurse', label: '巡回护士' },
+  { key: 'complications', label: '并发症' },
+]
+
+export const HOME_PAGE_FIELD_LABEL_MAP: Record<string, string> =
+  HOME_PAGE_FIELDS.reduce((acc, f) => {
+    acc[f.key] = f.label
+    return acc
+  }, {} as Record<string, string>)

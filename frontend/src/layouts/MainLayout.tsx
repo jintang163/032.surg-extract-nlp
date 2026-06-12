@@ -10,6 +10,7 @@ import {
   BellOutlined,
   MedicineBoxOutlined,
   FileMarkdownOutlined,
+  AudioOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
@@ -34,6 +35,12 @@ const MainLayout: React.FC = () => {
       label: '手术记录管理',
       onClick: () => navigate('/records'),
     },
+    {
+      key: '/voice',
+      icon: <AudioOutlined />,
+      label: '语音录入',
+      onClick: () => navigate('/voice'),
+    },
     ...(userInfo?.role === 'ADMIN'
       ? [
           {
@@ -51,6 +58,7 @@ const MainLayout: React.FC = () => {
     if (path.startsWith('/records')) return '/records'
     if (path.startsWith('/homepage')) return '/records'
     if (path.startsWith('/templates')) return '/templates'
+    if (path.startsWith('/voice')) return '/voice'
     return path
   }
 

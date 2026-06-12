@@ -245,3 +245,29 @@ export const templateApi = {
 
   importTemplate: (data: any) => http.post<any>('/templates/import', data),
 }
+
+export const voiceApi = {
+  createSession: (params?: {
+    recordId?: number
+    language?: string
+    enableAutoPunctuation?: boolean
+    enableRealTimeNer?: boolean
+  }) => http.post<any>('/voice/session', null, { params }),
+
+  getSessionStatus: (sessionId: string) => http.get<any>(`/voice/session/${sessionId}`),
+
+  stopSession: (sessionId: string) => http.post<any>(`/voice/session/${sessionId}/stop`),
+
+  uploadChunk: (
+    sessionId: string,
+    seq: number,
+    chunk: Blob,
+    lastChunk = false
+  ) => http.upload<any>('/voice/upload-chunk', chunk, { sessionId, seq, lastChunk }),
+
+  submitTextChunk: (sessionId: string, text: string) =>
+    http.post<any>('/voice/text-chunk', { text }, { params: { sessionId } }),
+
+  addPunctuation: (text: string) =>
+    http.post<string>('/voice/add-punctuation', { text }),
+}
