@@ -36,6 +36,13 @@ public enum ErrorCode {
 
     PERMISSION_DENIED(4003, "权限不足，仅管理员可操作"),
 
+    FIELD_NOT_FOUND(7001, "自定义字段不存在"),
+    FIELD_CODE_DUPLICATE(7002, "字段编码已存在"),
+    SAMPLE_NOT_FOUND(7003, "训练样本不存在"),
+    NOT_ENOUGH_SAMPLES(7004, "训练样本不足，至少需要5个样本"),
+    MODEL_TRAIN_FAILED(7005, "模型训练失败"),
+    MODEL_NOT_FOUND(7006, "模型不存在或未训练"),
+
     SYSTEM_ERROR(9999, "系统内部错误");
 
     private final Integer code;

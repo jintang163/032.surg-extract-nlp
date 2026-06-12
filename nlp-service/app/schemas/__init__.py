@@ -115,6 +115,10 @@ class MultimodalFusionResponse(BaseModel):
 class NerExtractRequest(BaseModel):
     record_id: Optional[int] = Field(None, description="记录ID")
     text: str = Field(..., description="待抽取文本", min_length=1)
+    department: Optional[str] = Field(None, description="科室名称，用于加载科室自定义NER模型")
+    entity_types: Optional[List[str]] = Field(None, description="指定要抽取的实体类型列表")
+    domain: Optional[str] = Field("surgery", description="领域")
+    include_confidence: Optional[bool] = Field(True, description="是否返回置信度")
 
 
 class NerExtractResponse(BaseModel):

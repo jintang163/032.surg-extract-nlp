@@ -9,6 +9,7 @@ from app.services.ocr_service import OcrService
 from app.services.regex_extractor import RegexExtractor
 from app.services.ner_model_service import NerModelService
 from app.services.rule_engine import RuleEngine
+from app.services.custom_ner_service import CustomNerService
 
 
 class TextPreprocessor:
@@ -92,6 +93,7 @@ class NerExtractService:
         self.regex_extractor = RegexExtractor()
         self.model_service = NerModelService()
         self.rule_engine = RuleEngine()
+        self.custom_ner_service = CustomNerService()
         logger.info("NLP抽取服务初始化完成")
 
     def process_ocr(self, file_content: bytes, filename: str, file_type: str = None) -> Dict[str, Any]:
@@ -168,7 +170,9 @@ class NerExtractService:
             pass
         return f"OCR处理失败: {str(e)}"
 
-    def extract_entities(self, text: str, record_id: int = None) -> Dict[str, Any]:
+    def extract_entities(self, text: str, record_id: int = None,
+                         department: str = None,
+                         entity_types: List[str] = None) -> Dict[str, Any]:
         start_time = time.time()
 
         if not text or not text.strip():
@@ -189,6 +193,13 @@ class NerExtractService:
             logger.info(f"正则抽取: {len(regex_entities)}个实体")
 
             all_entities = model_entities + regex_entities
+
+            if department:
+                custom_entities = self.custom_ner_service.extract_entities(
+                    text, department, entity_types
+                )
+                logger.info(f"自定义字段抽取: {len(custom_entities)}个实体, 科室={department}")
+                all_entities.extend(custom_entities)
 
             final_entities = self.rule_engine.apply_rules(all_entities, text)
             final_entities = self._resolve_conflicts(final_entities)

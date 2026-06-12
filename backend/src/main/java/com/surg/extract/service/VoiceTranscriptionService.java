@@ -46,6 +46,7 @@ public class VoiceTranscriptionService {
     private final SurgeryEntityMapper entityMapper;
     private final ObjectMapper objectMapper;
     private final MedicalRecordHomeService homeService;
+    private final DepartmentCustomFieldService customFieldService;
 
     private final Map<String, VoiceSession> sessions = new ConcurrentHashMap<>();
 
@@ -59,8 +60,21 @@ public class VoiceTranscriptionService {
         session.setFullText(new StringBuilder());
         session.setEntities(new ArrayList<>());
         session.setHomePageFields(new LinkedHashMap<>());
+        session.setCustomFields(new LinkedHashMap<>());
+
+        if (recordId != null) {
+            try {
+                SurgeryRecord record = recordMapper.selectById(recordId);
+                if (record != null) {
+                    session.setDepartment(record.getDepartment());
+                }
+            } catch (Exception e) {
+                log.warn("获取科室信息失败: {}", e.getMessage());
+            }
+        }
+
         sessions.put(sessionId, session);
-        log.info("创建语音会话: sessionId={}, recordId={}", sessionId, recordId);
+        log.info("创建语音会话: sessionId={}, recordId={}, department={}", sessionId, recordId, session.getDepartment());
         return session;
     }
 
@@ -163,7 +177,7 @@ public class VoiceTranscriptionService {
         return t;
     }
 
-    public List<SurgeryEntity> extractEntitiesFromText(String sentence) {
+    public List<SurgeryEntity> extractEntitiesFromText(String sentence, String department) {
         List<SurgeryEntity> result = new ArrayList<>();
         if (StrUtil.isBlank(sentence)) return result;
 
@@ -172,6 +186,7 @@ public class VoiceTranscriptionService {
             request.setText(sentence);
             request.setDomain("surgery");
             request.setIncludeConfidence(true);
+            request.setDepartment(department);
             NlpNerResponse response = nlpClient.extractEntities(request);
             if (response != null && Boolean.TRUE.equals(response.getSuccess()) && response.getEntities() != null) {
                 for (NerEntityDTO dto : response.getEntities()) {
@@ -195,6 +210,10 @@ public class VoiceTranscriptionService {
         }
 
         return result;
+    }
+
+    public List<SurgeryEntity> extractEntitiesFromText(String sentence) {
+        return extractEntitiesFromText(sentence, null);
     }
 
     private List<SurgeryEntity> extractByRules(String text) {
@@ -266,6 +285,45 @@ public class VoiceTranscriptionService {
         }
 
         return fields;
+    }
+
+    public Map<String, Object> updateCustomFieldsFromEntities(String sessionId, List<SurgeryEntity> newEntities) {
+        VoiceSession session = getSession(sessionId);
+        Map<String, Object> customFields = session.getCustomFields();
+        if (customFields == null) {
+            customFields = new LinkedHashMap<>();
+            session.setCustomFields(customFields);
+        }
+
+        String department = session.getDepartment();
+        if (StrUtil.isBlank(department)) {
+            return customFields;
+        }
+
+        try {
+            List<CustomFieldDTO> fieldConfigs = customFieldService.getNerEnabledFields(department);
+            if (fieldConfigs == null || fieldConfigs.isEmpty()) {
+                return customFields;
+            }
+
+            Map<String, CustomFieldDTO> codeToField = new HashMap<>();
+            for (CustomFieldDTO cfg : fieldConfigs) {
+                String entityType = "CUSTOM_" + cfg.getFieldCode().toUpperCase();
+                codeToField.put(entityType, cfg);
+            }
+
+            for (SurgeryEntity entity : newEntities) {
+                String entityType = entity.getEntityType();
+                if (codeToField.containsKey(entityType) && StrUtil.isNotBlank(entity.getEntityValue())) {
+                    CustomFieldDTO cfg = codeToField.get(entityType);
+                    customFields.put(cfg.getFieldCode(), entity.getEntityValue());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("更新自定义字段失败: {}", e.getMessage());
+        }
+
+        return customFields;
     }
 
     private Map<String, String> getEntityToHomeMapping() {
@@ -375,6 +433,11 @@ public class VoiceTranscriptionService {
                     applyFieldsToHome(home, fields);
                     homePageMapper.updateById(home);
                 }
+
+                Map<String, Object> customFields = session.getCustomFields();
+                if (customFields != null && !customFields.isEmpty()) {
+                    saveCustomFields(recordId, session.getDepartment(), customFields);
+                }
             }
         }
 
@@ -437,6 +500,40 @@ public class VoiceTranscriptionService {
         }
     }
 
+    private void saveCustomFields(Long recordId, String department, Map<String, Object> customFields) {
+        if (StrUtil.isBlank(department) || customFields == null || customFields.isEmpty()) {
+            return;
+        }
+
+        try {
+            List<CustomFieldDTO> fieldConfigs = customFieldService.getFieldsByDepartment(department);
+            Map<String, CustomFieldDTO> codeMap = new HashMap<>();
+            for (CustomFieldDTO cfg : fieldConfigs) {
+                codeMap.put(cfg.getFieldCode(), cfg);
+            }
+
+            for (Map.Entry<String, Object> entry : customFields.entrySet()) {
+                String fieldCode = entry.getKey();
+                Object value = entry.getValue();
+                if (value == null) continue;
+
+                CustomFieldDTO cfg = codeMap.get(fieldCode);
+                if (cfg != null) {
+                    customFieldService.saveHomeExtField(
+                            recordId,
+                            cfg.getId(),
+                            String.valueOf(value),
+                            "NER",
+                            null
+                    );
+                }
+            }
+            log.info("保存自定义字段成功: recordId={}, count={}", recordId, customFields.size());
+        } catch (Exception e) {
+            log.warn("保存自定义字段失败: recordId={}, error={}", recordId, e.getMessage());
+        }
+    }
+
     public VoiceStreamMessageDTO processChunk(String sessionId, byte[] audioChunk, int seq, boolean lastChunk) {
         VoiceSession session = getSession(sessionId);
         session.setLastActivityTime(LocalDateTime.now());
@@ -493,12 +590,14 @@ public class VoiceTranscriptionService {
             String sentence = appendAndDetect(session.getSessionId(), text, true);
             session.setSimulatedText("");
             if (StrUtil.isNotBlank(sentence)) {
-                List<SurgeryEntity> newEntities = extractEntitiesFromText(sentence);
+                List<SurgeryEntity> newEntities = extractEntitiesFromText(sentence, session.getDepartment());
                 Map<String, Object> homeFields = updateHomePageFromEntities(session.getSessionId(), newEntities);
+                Map<String, Object> customFields = updateCustomFieldsFromEntities(session.getSessionId(), newEntities);
                 Map<String, Object> payload = new LinkedHashMap<>();
                 payload.put("sentence", sentence);
                 payload.put("entities", newEntities);
                 payload.put("homePageFields", homeFields);
+                payload.put("customFields", customFields);
                 return VoiceStreamMessageDTO.finalSegment(session.getSessionId(), sentence, payload);
             }
         }
@@ -508,12 +607,14 @@ public class VoiceTranscriptionService {
             if (StrUtil.isNotBlank(last)) {
                 session.getFullText().append(last);
                 buffer.setLength(0);
-                List<SurgeryEntity> entities = extractEntitiesFromText(last);
+                List<SurgeryEntity> entities = extractEntitiesFromText(last, session.getDepartment());
                 Map<String, Object> fields = updateHomePageFromEntities(session.getSessionId(), entities);
+                Map<String, Object> customFields = updateCustomFieldsFromEntities(session.getSessionId(), entities);
                 Map<String, Object> payload = new LinkedHashMap<>();
                 payload.put("sentence", last);
                 payload.put("entities", entities);
                 payload.put("homePageFields", fields);
+                payload.put("customFields", customFields);
                 return VoiceStreamMessageDTO.finalSegment(session.getSessionId(), last, payload);
             }
         }
@@ -527,12 +628,14 @@ public class VoiceTranscriptionService {
         session.setSimulatedText("");
 
         if (StrUtil.isNotBlank(sentence)) {
-            List<SurgeryEntity> newEntities = extractEntitiesFromText(sentence);
+            List<SurgeryEntity> newEntities = extractEntitiesFromText(sentence, session.getDepartment());
             Map<String, Object> homeFields = updateHomePageFromEntities(session.getSessionId(), newEntities);
+            Map<String, Object> customFields = updateCustomFieldsFromEntities(session.getSessionId(), newEntities);
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("sentence", sentence);
             payload.put("entities", newEntities);
             payload.put("homePageFields", homeFields);
+            payload.put("customFields", customFields);
             return VoiceStreamMessageDTO.finalSegment(session.getSessionId(), sentence, payload);
         }
         return VoiceStreamMessageDTO.partial(session.getSessionId(), text);
@@ -555,12 +658,14 @@ public class VoiceTranscriptionService {
                 String sentence = appendAndDetect(session.getSessionId(), text, false);
 
                 if (StrUtil.isNotBlank(sentence)) {
-                    List<SurgeryEntity> newEntities = extractEntitiesFromText(sentence);
+                    List<SurgeryEntity> newEntities = extractEntitiesFromText(sentence, session.getDepartment());
                     Map<String, Object> homeFields = updateHomePageFromEntities(session.getSessionId(), newEntities);
+                    Map<String, Object> customFields = updateCustomFieldsFromEntities(session.getSessionId(), newEntities);
                     Map<String, Object> payload = new LinkedHashMap<>();
                     payload.put("sentence", sentence);
                     payload.put("entities", newEntities);
                     payload.put("homePageFields", homeFields);
+                    payload.put("customFields", customFields);
                     session.setLastSentence(sentence);
                     return VoiceStreamMessageDTO.finalSegment(session.getSessionId(), sentence, payload);
                 }
@@ -637,6 +742,7 @@ public class VoiceTranscriptionService {
     public static class VoiceSession {
         private String sessionId;
         private Long recordId;
+        private String department;
         private LocalDateTime startTime;
         private LocalDateTime endTime;
         private LocalDateTime lastActivityTime;
@@ -647,6 +753,7 @@ public class VoiceTranscriptionService {
         private String lastSentence;
         private List<SurgeryEntity> entities;
         private Map<String, Object> homePageFields;
+        private Map<String, Object> customFields;
         private ByteArrayOutputStream audioBuffer = new ByteArrayOutputStream();
         private int phraseIndex = 0;
         private int phraseProgress = 0;

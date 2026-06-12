@@ -535,3 +535,127 @@ INSERT INTO `surgery_template` (`template_code`, `template_name`, `surgery_type`
 INSERT INTO `surgery_template_version` (`template_id`, `version_no`, `template_content`, `placeholders`, `change_log`, `is_current`, `created_user_name`)
 SELECT id, 1, template_content, placeholders, '初始版本', 1, created_user_name
 FROM surgery_template;
+
+-- -----------------------------------------------------------
+-- 10. 科室自定义抽取字段表
+-- -----------------------------------------------------------
+DROP TABLE IF EXISTS `department_custom_field`;
+CREATE TABLE `department_custom_field` (
+    `id`                BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `department`        VARCHAR(128)    NOT NULL COMMENT '科室名称, 如: 普外科、骨科、眼科',
+    `field_code`        VARCHAR(64)     NOT NULL COMMENT '字段编码(英文大写+下划线), 如: IMPLANT_MODEL',
+    `field_name`        VARCHAR(128)    NOT NULL COMMENT '字段中文名, 如: 植入物型号',
+    `field_type`        VARCHAR(32)     NOT NULL DEFAULT 'STRING' COMMENT '字段类型: STRING、INT、DECIMAL、DATE、DATETIME、ENUM',
+    `unit`              VARCHAR(32)     DEFAULT NULL COMMENT '单位, 如: ml、mg',
+    `enum_options`      JSON            DEFAULT NULL COMMENT '枚举选项列表(JSON数组)',
+    `description`       VARCHAR(512)    DEFAULT NULL COMMENT '字段描述',
+    `sort_order`        INT             DEFAULT 0 COMMENT '排序号',
+    `required`          TINYINT         DEFAULT 0 COMMENT '是否必填: 0-否, 1-是',
+    `ner_enabled`       TINYINT         DEFAULT 1 COMMENT '是否启用NER抽取: 0-否, 1-是',
+    `model_status`      VARCHAR(32)     DEFAULT 'NOT_TRAINED' COMMENT '模型状态: NOT_TRAINED-未训练, TRAINING-训练中, TRAINED-已训练, FAILED-训练失败',
+    `model_version`     VARCHAR(64)     DEFAULT NULL COMMENT '模型版本号',
+    `last_train_time`   DATETIME        DEFAULT NULL COMMENT '最后训练时间',
+    `sample_count`      INT             DEFAULT 0 COMMENT '训练样本数量',
+    `enabled`           TINYINT         DEFAULT 1 COMMENT '是否启用: 0-禁用, 1-启用',
+    `created_user_id`   BIGINT          DEFAULT NULL COMMENT '创建人ID',
+    `created_user_name` VARCHAR(64)     DEFAULT NULL COMMENT '创建人姓名',
+    `created_time`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_time`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted`           TINYINT         NOT NULL DEFAULT 0 COMMENT '逻辑删除: 0-未删除, 1-已删除',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_dept_field_code` (`department`, `field_code`),
+    KEY `idx_department` (`department`),
+    KEY `idx_model_status` (`model_status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='科室自定义抽取字段表';
+
+-- -----------------------------------------------------------
+-- 11. 自定义字段训练样本表
+-- -----------------------------------------------------------
+DROP TABLE IF EXISTS `custom_field_sample`;
+CREATE TABLE `custom_field_sample` (
+    `id`                BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `field_id`          BIGINT          NOT NULL COMMENT '自定义字段ID',
+    `text`              TEXT            NOT NULL COMMENT '样本原文',
+    `entity_value`      VARCHAR(512)    NOT NULL COMMENT '实体值(抽取结果)',
+    `start_pos`         INT             DEFAULT NULL COMMENT '实体在原文中的起始位置',
+    `end_pos`           INT             DEFAULT NULL COMMENT '实体在原文中的结束位置',
+    `source`            VARCHAR(32)     DEFAULT 'MANUAL' COMMENT '样本来源: MANUAL-人工标注, IMPORT-批量导入, AUTO-自动生成',
+    `quality_score`     DECIMAL(3,2)    DEFAULT NULL COMMENT '样本质量评分 0.00-1.00',
+    `remark`            VARCHAR(512)    DEFAULT NULL COMMENT '备注',
+    `created_user_id`   BIGINT          DEFAULT NULL COMMENT '创建人ID',
+    `created_user_name` VARCHAR(64)     DEFAULT NULL COMMENT '创建人姓名',
+    `created_time`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_time`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted`           TINYINT         NOT NULL DEFAULT 0 COMMENT '逻辑删除: 0-未删除, 1-已删除',
+    PRIMARY KEY (`id`),
+    KEY `idx_field_id` (`field_id`),
+    KEY `idx_source` (`source`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='自定义字段训练样本表';
+
+-- -----------------------------------------------------------
+-- 12. 自定义字段抽取结果扩展表
+-- -----------------------------------------------------------
+DROP TABLE IF EXISTS `medical_record_home_ext`;
+CREATE TABLE `medical_record_home_ext` (
+    `id`                BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `record_id`         BIGINT          NOT NULL COMMENT '手术记录ID',
+    `field_id`          BIGINT          NOT NULL COMMENT '自定义字段ID',
+    `field_code`        VARCHAR(64)     NOT NULL COMMENT '字段编码',
+    `field_name`        VARCHAR(128)    NOT NULL COMMENT '字段名称',
+    `field_value`       TEXT            DEFAULT NULL COMMENT '字段值',
+    `confidence`        DECIMAL(5,4)    DEFAULT NULL COMMENT '置信度',
+    `source`            VARCHAR(32)     DEFAULT 'NER' COMMENT '来源: NER-模型抽取, MANUAL-人工填写',
+    `verified`          TINYINT         DEFAULT 0 COMMENT '是否人工确认: 0-未确认, 1-已确认',
+    `verified_by`       BIGINT          DEFAULT NULL COMMENT '确认人ID',
+    `verified_time`     DATETIME        DEFAULT NULL COMMENT '确认时间',
+    `created_time`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_time`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_record_field` (`record_id`, `field_id`),
+    KEY `idx_record_id` (`record_id`),
+    KEY `idx_field_code` (`field_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='病案首页自定义字段扩展表';
+
+-- ============================================================
+-- 初始化科室自定义字段示例数据
+-- ============================================================
+
+-- 普外科自定义字段
+INSERT INTO `department_custom_field` (`department`, `field_code`, `field_name`, `field_type`, `unit`, `description`, `sort_order`, `required`, `ner_enabled`, `created_user_name`) VALUES
+('普外科', 'IMPLANT_MODEL', '植入物型号', 'STRING', NULL, '手术中使用的植入物型号/规格', 1, 0, 1, '系统管理员'),
+('普外科', 'IMPLANT_BRAND', '植入物品牌', 'STRING', NULL, '植入物的生产厂家/品牌', 2, 0, 1, '系统管理员'),
+('普外科', 'DRAINAGE_TUBE_TYPE', '引流管类型', 'STRING', NULL, '放置的引流管类型', 3, 0, 1, '系统管理员'),
+('普外科', 'DRAINAGE_TUBE_COUNT', '引流管数量', 'INT', '根', '放置引流管的数量', 4, 0, 1, '系统管理员');
+
+-- 骨科自定义字段
+INSERT INTO `department_custom_field` (`department`, `field_code`, `field_name`, `field_type`, `unit`, `enum_options`, `description`, `sort_order`, `required`, `ner_enabled`, `created_user_name`) VALUES
+('骨科', 'IMPLANT_MODEL', '植入物型号', 'STRING', NULL, NULL, '骨科内植入物型号/规格', 1, 0, 1, '系统管理员'),
+('骨科', 'IMPLANT_MATERIAL', '植入物材质', 'ENUM', NULL, '["钛合金","不锈钢","聚醚醚酮","可吸收材料","其他"]', '植入物的材质类型', 2, 0, 1, '系统管理员'),
+('骨科', 'FRACTURE_TYPE', '骨折类型', 'STRING', NULL, NULL, '骨折的具体分型', 3, 0, 1, '系统管理员'),
+('骨科', 'FIXATION_METHOD', '固定方式', 'STRING', NULL, NULL, '骨折内固定方式', 4, 0, 1, '系统管理员');
+
+-- 眼科自定义字段
+INSERT INTO `department_custom_field` (`department`, `field_code`, `field_name`, `field_type`, `unit`, `description`, `sort_order`, `required`, `ner_enabled`, `created_user_name`) VALUES
+('眼科', 'INTRAOCULAR_LENS_POWER', '人工晶体度数', 'DECIMAL', 'D', '植入人工晶体的度数', 1, 0, 1, '系统管理员'),
+('眼科', 'INTRAOCULAR_LENS_MODEL', '人工晶体型号', 'STRING', NULL, '人工晶体的型号', 2, 0, 1, '系统管理员'),
+('眼科', 'SURGERY_SITE', '手术眼别', 'ENUM', NULL, '["左眼","右眼","双眼"]', '手术部位:左眼/右眼/双眼', 3, 0, 1, '系统管理员'),
+('眼科', 'INCISION_SITE', '切口位置', 'STRING', NULL, '手术切口的具体位置', 4, 0, 1, '系统管理员');
+
+-- 普外科示例训练样本
+INSERT INTO `custom_field_sample` (`field_id`, `text`, `entity_value`, `start_pos`, `end_pos`, `source`, `created_user_name`)
+SELECT f.id, '术中置入补片，型号为Bard 3D Max，覆盖耻骨肌孔。', 'Bard 3D Max', 11, 22, 'MANUAL', '系统管理员'
+FROM department_custom_field f WHERE f.department='普外科' AND f.field_code='IMPLANT_MODEL';
+
+INSERT INTO `custom_field_sample` (`field_id`, `text`, `entity_value`, `start_pos`, `end_pos`, `source`, `created_user_name`)
+SELECT f.id, '使用强生公司生产的Ethicon可吸收缝线进行缝合。', 'Ethicon', 12, 19, 'MANUAL', '系统管理员'
+FROM department_custom_field f WHERE f.department='普外科' AND f.field_code='IMPLANT_BRAND';
+
+-- 骨科示例训练样本
+INSERT INTO `custom_field_sample` (`field_id`, `text`, `entity_value`, `start_pos`, `end_pos`, `source`, `created_user_name`)
+SELECT f.id, '置入股骨近端髓内钉，型号为PFNA-Ⅱ，直径11mm。', 'PFNA-Ⅱ', 13, 20, 'MANUAL', '系统管理员'
+FROM department_custom_field f WHERE f.department='骨科' AND f.field_code='IMPLANT_MODEL';
+
+-- 眼科示例训练样本
+INSERT INTO `custom_field_sample` (`field_id`, `text`, `entity_value`, `start_pos`, `end_pos`, `source`, `created_user_name`)
+SELECT f.id, '植入+21.0D人工晶体，型号为Alcon SN60WF。', '+21.0D', 3, 9, 'MANUAL', '系统管理员'
+FROM department_custom_field f WHERE f.department='眼科' AND f.field_code='INTRAOCULAR_LENS_POWER';

@@ -6,6 +6,8 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Map;
+
 @FeignClient(
     name = "nlp-service",
     url = "${nlp.service.url:http://localhost:8000}",
@@ -51,4 +53,10 @@ public interface NlpServiceClient {
 
     @PostMapping("/ner/extract")
     NlpNerResponse extractEntities(@RequestBody NlpNerRequest request);
+
+    @PostMapping("/ner/custom/train")
+    Map<String, Object> trainCustomNer(@RequestBody Map<String, Object> request);
+
+    @GetMapping("/ner/custom/status/{field_id}")
+    Map<String, Object> getCustomNerStatus(@PathVariable("field_id") Long fieldId);
 }

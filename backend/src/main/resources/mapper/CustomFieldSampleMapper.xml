@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.surg.extract.mapper.CustomFieldSampleMapper">
+
+    <select id="selectByFieldId" resultType="com.surg.extract.entity.CustomFieldSample">
+        SELECT * FROM custom_field_sample
+        WHERE field_id = #{fieldId}
+          AND deleted = 0
+        ORDER BY id DESC
+    </select>
+
+    <select id="countByFieldId" resultType="int">
+        SELECT COUNT(*) FROM custom_field_sample
+        WHERE field_id = #{fieldId}
+          AND deleted = 0
+    </select>
+
+</mapper>

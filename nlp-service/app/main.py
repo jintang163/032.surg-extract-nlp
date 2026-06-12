@@ -17,6 +17,7 @@ from app.schemas import (
     HealthResponse
 )
 from app.services.ner_extract_service import NerExtractService
+from app.services.custom_ner_service import CustomNerService
 from app.services.asr_service import AsrService, AsrProcessingError, AsrDependencyError
 from app.services.instrument_recognition_service import (
     InstrumentRecognitionService,
@@ -48,6 +49,7 @@ app.add_middleware(
 )
 
 _ner_service: NerExtractService = None
+_custom_ner_service: CustomNerService = None
 _asr_service: AsrService = None
 _instrument_service: InstrumentRecognitionService = None
 _fusion_service: MultimodalFusionService = None
@@ -58,6 +60,13 @@ def get_ner_service() -> NerExtractService:
     if _ner_service is None:
         _ner_service = NerExtractService()
     return _ner_service
+
+
+def get_custom_ner_service() -> CustomNerService:
+    global _custom_ner_service
+    if _custom_ner_service is None:
+        _custom_ner_service = CustomNerService()
+    return _custom_ner_service
 
 
 def get_asr_service() -> AsrService:
@@ -87,10 +96,11 @@ async def startup_event():
     logger.info(f"监听地址: {settings.host}:{settings.port}")
     try:
         get_ner_service()
+        get_custom_ner_service()
         get_asr_service()
         get_instrument_service()
         get_fusion_service()
-        logger.info("NLP服务（含多模态）初始化成功")
+        logger.info("NLP服务（含多模态、自定义NER）初始化成功")
     except Exception as e:
         logger.error(f"NLP服务初始化失败: {e}", exc_info=True)
 
@@ -405,11 +415,16 @@ async def api_ner_extract(
     request: NerExtractRequest,
     service: NerExtractService = Depends(get_ner_service)
 ):
-    logger.info(f"NER抽取请求: record_id={request.record_id}, text_len={len(request.text)}")
+    logger.info(f"NER抽取请求: record_id={request.record_id}, text_len={len(request.text)}, department={request.department}")
     start = time.time()
 
     try:
-        result = service.extract_entities(request.text, request.record_id)
+        result = service.extract_entities(
+            request.text,
+            request.record_id,
+            request.department,
+            request.entity_types
+        )
         result["processing_time_ms"] = int((time.time() - start) * 1000)
         return NerExtractResponse(**result)
     except Exception as e:
@@ -449,6 +464,108 @@ async def api_pipeline_process(
     except Exception as e:
         logger.error(f"完整流程异常: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/ner/custom/train", tags=["实体抽取"])
+async def api_custom_ner_train(
+    request: dict,
+    service: CustomNerService = Depends(get_custom_ner_service)
+):
+    """训练自定义NER模型（少样本学习）"""
+    field_id = request.get("field_id")
+    department = request.get("department", "")
+    field_code = request.get("field_code", "")
+    entity_type = request.get("entity_type", f"CUSTOM_{field_code.upper()}")
+    samples = request.get("samples", [])
+
+    logger.info(f"自定义NER训练请求: field_id={field_id}, department={department}, field_code={field_code}, samples={len(samples)}")
+
+    try:
+        result = service.train_model(
+            field_id=field_id,
+            department=department,
+            field_code=field_code,
+            entity_type=entity_type,
+            samples=samples
+        )
+        return result
+    except Exception as e:
+        logger.error(f"自定义NER训练异常: {e}", exc_info=True)
+        return {
+            "success": False,
+            "message": f"训练失败: {str(e)}",
+            "field_id": field_id
+        }
+
+
+@app.get("/api/v1/ner/custom/status/{field_id}", tags=["实体抽取"])
+async def api_custom_ner_status(
+    field_id: int,
+    service: CustomNerService = Depends(get_custom_ner_service)
+):
+    """获取自定义NER模型训练状态"""
+    try:
+        return service.get_model_status(field_id)
+    except Exception as e:
+        logger.error(f"获取自定义NER状态异常: {e}", exc_info=True)
+        return {
+            "success": False,
+            "field_id": field_id,
+            "message": str(e)
+        }
+
+
+@app.get("/api/v1/ner/custom/department/{department}", tags=["实体抽取"])
+async def api_custom_ner_by_department(
+    department: str,
+    service: CustomNerService = Depends(get_custom_ner_service)
+):
+    """获取某科室的所有自定义NER模型"""
+    try:
+        models = service.get_fields_by_department(department)
+        return {
+            "success": True,
+            "department": department,
+            "models": models,
+            "count": len(models)
+        }
+    except Exception as e:
+        logger.error(f"获取科室自定义NER列表异常: {e}", exc_info=True)
+        return {
+            "success": False,
+            "department": department,
+            "message": str(e)
+        }
+
+
+@app.post("/api/v1/ner/custom/extract", tags=["实体抽取"])
+async def api_custom_ner_extract(
+    request: dict,
+    service: CustomNerService = Depends(get_custom_ner_service)
+):
+    """使用自定义NER模型抽取实体"""
+    text = request.get("text", "")
+    department = request.get("department")
+    entity_types = request.get("entity_types")
+
+    logger.info(f"自定义NER抽取请求: department={department}, text_len={len(text)}")
+    start = time.time()
+
+    try:
+        entities = service.extract_entities(text, department, entity_types)
+        return {
+            "success": True,
+            "entities": entities,
+            "processing_time_ms": int((time.time() - start) * 1000)
+        }
+    except Exception as e:
+        logger.error(f"自定义NER抽取异常: {e}", exc_info=True)
+        return {
+            "success": False,
+            "entities": [],
+            "error_message": str(e),
+            "processing_time_ms": int((time.time() - start) * 1000)
+        }
 
 
 if __name__ == "__main__":

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.surg.extract.mapper.MedicalRecordHomeExtMapper">
+
+    <select id="selectByRecordId" resultType="com.surg.extract.entity.MedicalRecordHomeExt">
+        SELECT * FROM medical_record_home_ext
+        WHERE record_id = #{recordId}
+        ORDER BY id ASC
+    </select>
+
+    <select id="selectByRecordIdAndFieldId" resultType="com.surg.extract.entity.MedicalRecordHomeExt">
+        SELECT * FROM medical_record_home_ext
+        WHERE record_id = #{recordId}
+          AND field_id = #{fieldId}
+        LIMIT 1
+    </select>
+
+    <delete id="deleteByRecordId">
+        DELETE FROM medical_record_home_ext
+        WHERE record_id = #{recordId}
+    </delete>
+
+</mapper>
