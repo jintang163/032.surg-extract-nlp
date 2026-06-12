@@ -33,12 +33,14 @@ import { useNavigate } from 'react-router-dom'
 import { templateApi } from '@/services/api'
 import type { SurgeryTemplate, TemplateStatus } from '@/types'
 import { TemplateStatusMap, PageResult } from '@/types'
+import { useAuthStore } from '@/store/authStore'
 import dayjs from 'dayjs'
 
 const { Option } = Select
 
 const SurgeryTemplateList: React.FC = () => {
   const navigate = useNavigate()
+  const { userInfo } = useAuthStore()
   const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<SurgeryTemplate[]>([])
@@ -53,8 +55,13 @@ const SurgeryTemplateList: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
+    if (userInfo?.role !== 'ADMIN') {
+      message.warning('仅管理员可访问模板管理')
+      navigate('/dashboard', { replace: true })
+      return
+    }
     loadData()
-  }, [pagination])
+  }, [pagination, userInfo])
 
   const loadData = async () => {
     setLoading(true)

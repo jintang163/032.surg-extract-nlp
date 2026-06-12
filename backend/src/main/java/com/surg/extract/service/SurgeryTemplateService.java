@@ -83,9 +83,13 @@ public class SurgeryTemplateService {
         BeanUtils.copyProperties(dto, template);
         template.setPlaceholders(toJson(dto.getPlaceholders()));
         template.setCurrentVersion(1);
-        template.setStatus("DRAFT");
-        template.setIsDefault(dto.getSortOrder() != null ? dto.getSortOrder() : 0);
+        if (dto.getStatus() != null && !dto.getStatus().isEmpty()) {
+            template.setStatus(dto.getStatus());
+        } else {
+            template.setStatus("DRAFT");
+        }
         template.setIsDefault(0);
+        template.setSortOrder(dto.getSortOrder() != null ? dto.getSortOrder() : 0);
         template.setUseCount(0);
         template.setCreatedUserId(1L);
         template.setCreatedUserName("当前用户");

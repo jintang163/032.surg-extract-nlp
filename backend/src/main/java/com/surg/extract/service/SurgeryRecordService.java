@@ -820,4 +820,20 @@ public class SurgeryRecordService {
         if (record == null) return null;
         return record.getFillDuration() != null ? record.getFillDuration().longValue() : null;
     }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void saveTemplateDraft(Long recordId, Long templateId, String draftContent) {
+        SurgeryRecord record = surgeryRecordMapper.selectById(recordId);
+        if (record == null) {
+            throw new BusinessException(ErrorCode.RECORD_NOT_FOUND);
+        }
+        if (templateId != null) {
+            record.setTemplateId(templateId);
+        }
+        if (draftContent != null) {
+            record.setTemplateDraft(draftContent);
+        }
+        surgeryRecordMapper.updateById(record);
+        log.info("保存模板草稿: recordId={}, templateId={}", recordId, templateId);
+    }
 }

@@ -73,6 +73,8 @@ CREATE TABLE `surgery_record` (
     `his_synced`          TINYINT         DEFAULT 0 COMMENT '是否已同步HIS: 0-未同步, 1-已同步',
     `his_sync_time`       DATETIME        DEFAULT NULL COMMENT 'HIS同步时间',
     `his_sync_message`    VARCHAR(512)    DEFAULT NULL COMMENT 'HIS同步信息',
+    `template_id`         BIGINT          DEFAULT NULL COMMENT '使用的手术模板ID',
+    `template_draft`      LONGTEXT        DEFAULT NULL COMMENT '模板生成的草稿内容',
     `created_time`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_time`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     `deleted`             TINYINT         NOT NULL DEFAULT 0 COMMENT '逻辑删除: 0-未删除, 1-已删除',
@@ -387,7 +389,7 @@ CREATE TABLE `surgery_template_version` (
 -- ============================================================
 
 -- 初始化手术模板(常见手术类型)
-INSERT INTO `surgery_template` (`template_code`, `template_name`, `surgery_type`, `surgery_code`, `department`, `template_content`, `current_version`, `status`, `is_default`, `description`, `sort_order`, `created_user_name`) VALUES
+INSERT INTO `surgery_template` (`template_code`, `template_name`, `surgery_type`, `surgery_code`, `department`, `template_content`, `placeholders`, `current_version`, `status`, `is_default`, `description`, `sort_order`, `created_user_name`) VALUES
 ('TPL-LAP-APPENDECTOMY', '腹腔镜阑尾切除术模板', '腹腔镜阑尾切除术', '47.01', '普外科',
 '术前诊断：${术前诊断}
 术后诊断：${术后诊断}
@@ -414,7 +416,7 @@ INSERT INTO `surgery_template` (`template_code`, `template_name`, `surgery_type`
 术中患者生命体征平稳，术毕安返病房。
 
 术中并发症：${术中并发症}
-', 1, 'ACTIVE', 1, '普外科腹腔镜阑尾切除术标准模板', 1, '系统管理员'),
+', '[{"name":"术前诊断","label":"术前诊断","entityType":"PREOP_DIAGNOSIS","required":true},{"name":"术后诊断","label":"术后诊断","entityType":"POSTOP_DIAGNOSIS","required":true},{"name":"手术名称","label":"手术名称","entityType":"SURGERY_NAME","required":true},{"name":"手术日期","label":"手术日期","entityType":"SURGERY_DATE","required":true},{"name":"手术医生","label":"手术医生","entityType":"SURGEON","required":true},{"name":"第一助手","label":"第一助手","entityType":"ASSISTANT"},{"name":"第二助手","label":"第二助手"},{"name":"麻醉方式","label":"麻醉方式","entityType":"ANESTHESIA_TYPE","required":true},{"name":"麻醉医生","label":"麻醉医生","entityType":"ANESTHESIOLOGIST","required":true},{"name":"器械护士","label":"器械护士","entityType":"SCRUB_NURSE"},{"name":"巡回护士","label":"巡回护士","entityType":"CIRCULATING_NURSE"},{"name":"切口等级","label":"切口等级","entityType":"INCISION_LEVEL","required":true},{"name":"切口愈合","label":"切口愈合","entityType":"INCISION_HEALING"},{"name":"阑尾位置","label":"阑尾位置","description":"阑尾解剖位置"},{"name":"阑尾情况描述","label":"阑尾情况","description":"阑尾病变描述"},{"name":"失血量","label":"失血量","entityType":"BLOOD_LOSS"},{"name":"输液量","label":"输液量","entityType":"FLUID_INFUSION"},{"name":"输血量","label":"输血量","entityType":"BLOOD_TRANSFUSION"},{"name":"术中并发症","label":"术中并发症","entityType":"COMPLICATION"}]', 1, 'ACTIVE', 1, '普外科腹腔镜阑尾切除术标准模板', 1, '系统管理员'),
 
 ('TPL-CESAREAN-SECTION', '剖宫产术模板', '子宫下段剖宫产术', '74.1', '妇产科',
 '术前诊断：${术前诊断}
@@ -444,7 +446,7 @@ INSERT INTO `surgery_template` (`template_code`, `template_name`, `surgery_type`
 术中患者生命体征平稳，术毕安返病房。
 
 术中并发症：${术中并发症}
-', 1, 'ACTIVE', 1, '妇产科剖宫产术标准模板', 2, '系统管理员'),
+', '[{"name":"术前诊断","label":"术前诊断","entityType":"PREOP_DIAGNOSIS","required":true},{"name":"术后诊断","label":"术后诊断","entityType":"POSTOP_DIAGNOSIS","required":true},{"name":"手术名称","label":"手术名称","entityType":"SURGERY_NAME","required":true},{"name":"手术日期","label":"手术日期","entityType":"SURGERY_DATE","required":true},{"name":"手术医生","label":"手术医生","entityType":"SURGEON","required":true},{"name":"第一助手","label":"第一助手","entityType":"ASSISTANT"},{"name":"麻醉方式","label":"麻醉方式","entityType":"ANESTHESIA_TYPE","required":true},{"name":"麻醉医生","label":"麻醉医生","entityType":"ANESTHESIOLOGIST","required":true},{"name":"器械护士","label":"器械护士","entityType":"SCRUB_NURSE"},{"name":"巡回护士","label":"巡回护士","entityType":"CIRCULATING_NURSE"},{"name":"切口等级","label":"切口等级","entityType":"INCISION_LEVEL","required":true},{"name":"切口愈合","label":"切口愈合","entityType":"INCISION_HEALING"},{"name":"孕周","label":"孕周","description":"妊娠周数"},{"name":"胎儿性别","label":"胎儿性别","description":"男/女"},{"name":"胎儿体重","label":"胎儿体重","description":"单位g"},{"name":"apgar1","label":"Apgar 1分钟"},{"name":"apgar5","label":"Apgar 5分钟"},{"name":"失血量","label":"失血量","entityType":"BLOOD_LOSS"},{"name":"输液量","label":"输液量","entityType":"FLUID_INFUSION"},{"name":"输血量","label":"输血量","entityType":"BLOOD_TRANSFUSION"},{"name":"术中并发症","label":"术中并发症","entityType":"COMPLICATION"}]', 1, 'ACTIVE', 1, '妇产科剖宫产术标准模板', 2, '系统管理员'),
 
 ('TPL-CHOLECYSTECTOMY', '腹腔镜胆囊切除术模板', '腹腔镜胆囊切除术', '51.23', '普外科',
 '术前诊断：${术前诊断}
@@ -472,7 +474,7 @@ INSERT INTO `surgery_template` (`template_code`, `template_name`, `surgery_type`
 术中患者生命体征平稳，术毕安返病房。
 
 术中并发症：${术中并发症}
-', 1, 'ACTIVE', 1, '普外科腹腔镜胆囊切除术标准模板', 3, '系统管理员'),
+', '[{"name":"术前诊断","label":"术前诊断","entityType":"PREOP_DIAGNOSIS","required":true},{"name":"术后诊断","label":"术后诊断","entityType":"POSTOP_DIAGNOSIS","required":true},{"name":"手术名称","label":"手术名称","entityType":"SURGERY_NAME","required":true},{"name":"手术日期","label":"手术日期","entityType":"SURGERY_DATE","required":true},{"name":"手术医生","label":"手术医生","entityType":"SURGEON","required":true},{"name":"第一助手","label":"第一助手","entityType":"ASSISTANT"},{"name":"麻醉方式","label":"麻醉方式","entityType":"ANESTHESIA_TYPE","required":true},{"name":"麻醉医生","label":"麻醉医生","entityType":"ANESTHESIOLOGIST","required":true},{"name":"器械护士","label":"器械护士","entityType":"SCRUB_NURSE"},{"name":"巡回护士","label":"巡回护士","entityType":"CIRCULATING_NURSE"},{"name":"切口等级","label":"切口等级","entityType":"INCISION_LEVEL","required":true},{"name":"切口愈合","label":"切口愈合","entityType":"INCISION_HEALING"},{"name":"胆囊大小","label":"胆囊大小","description":"胆囊大小描述"},{"name":"胆囊壁情况","label":"胆囊壁","description":"胆囊壁厚度/毛糙"},{"name":"结石情况","label":"结石情况","description":"结石数量及大小"},{"name":"失血量","label":"失血量","entityType":"BLOOD_LOSS"},{"name":"输液量","label":"输液量","entityType":"FLUID_INFUSION"},{"name":"术中并发症","label":"术中并发症","entityType":"COMPLICATION"}]', 1, 'ACTIVE', 1, '普外科腹腔镜胆囊切除术标准模板', 3, '系统管理员'),
 
 ('TPL-HERNIA-REPAIR', '腹股沟疝无张力修补术模板', '腹股沟疝无张力修补术', '53.05', '普外科',
 '术前诊断：${术前诊断}
@@ -499,7 +501,7 @@ INSERT INTO `surgery_template` (`template_code`, `template_name`, `surgery_type`
 术中患者生命体征平稳，术毕安返病房。
 
 术中并发症：${术中并发症}
-', 1, 'ACTIVE', 0, '普外科腹股沟疝无张力修补术标准模板', 4, '系统管理员'),
+', '[{"name":"术前诊断","label":"术前诊断","entityType":"PREOP_DIAGNOSIS","required":true},{"name":"术后诊断","label":"术后诊断","entityType":"POSTOP_DIAGNOSIS","required":true},{"name":"手术名称","label":"手术名称","entityType":"SURGERY_NAME","required":true},{"name":"手术日期","label":"手术日期","entityType":"SURGERY_DATE","required":true},{"name":"手术医生","label":"手术医生","entityType":"SURGEON","required":true},{"name":"第一助手","label":"第一助手","entityType":"ASSISTANT"},{"name":"麻醉方式","label":"麻醉方式","entityType":"ANESTHESIA_TYPE","required":true},{"name":"麻醉医生","label":"麻醉医生","entityType":"ANESTHESIOLOGIST","required":true},{"name":"器械护士","label":"器械护士","entityType":"SCRUB_NURSE"},{"name":"巡回护士","label":"巡回护士","entityType":"CIRCULATING_NURSE"},{"name":"切口等级","label":"切口等级","entityType":"INCISION_LEVEL","required":true},{"name":"切口愈合","label":"切口愈合","entityType":"INCISION_HEALING"},{"name":"疝囊大小","label":"疝囊大小","description":"疝囊体积描述"},{"name":"疝内容物","label":"疝内容物","description":"疝囊内容物"},{"name":"失血量","label":"失血量","entityType":"BLOOD_LOSS"},{"name":"输液量","label":"输液量","entityType":"FLUID_INFUSION"},{"name":"术中并发症","label":"术中并发症","entityType":"COMPLICATION"}]', 1, 'ACTIVE', 0, '普外科腹股沟疝无张力修补术标准模板', 4, '系统管理员'),
 
 ('TPL-THYROIDECTOMY', '甲状腺次全切除术模板', '甲状腺次全切除术', '06.39', '普外科',
 '术前诊断：${术前诊断}
@@ -527,9 +529,9 @@ INSERT INTO `surgery_template` (`template_code`, `template_name`, `surgery_type`
 术中患者生命体征平稳，术毕安返病房。
 
 术中并发症：${术中并发症}
-', 1, 'ACTIVE', 0, '普外科甲状腺次全切除术标准模板', 5, '系统管理员');
+', '[{"name":"术前诊断","label":"术前诊断","entityType":"PREOP_DIAGNOSIS","required":true},{"name":"术后诊断","label":"术后诊断","entityType":"POSTOP_DIAGNOSIS","required":true},{"name":"手术名称","label":"手术名称","entityType":"SURGERY_NAME","required":true},{"name":"手术日期","label":"手术日期","entityType":"SURGERY_DATE","required":true},{"name":"手术医生","label":"手术医生","entityType":"SURGEON","required":true},{"name":"第一助手","label":"第一助手","entityType":"ASSISTANT"},{"name":"麻醉方式","label":"麻醉方式","entityType":"ANESTHESIA_TYPE","required":true},{"name":"麻醉医生","label":"麻醉医生","entityType":"ANESTHESIOLOGIST","required":true},{"name":"器械护士","label":"器械护士","entityType":"SCRUB_NURSE"},{"name":"巡回护士","label":"巡回护士","entityType":"CIRCULATING_NURSE"},{"name":"切口等级","label":"切口等级","entityType":"INCISION_LEVEL","required":true},{"name":"切口愈合","label":"切口愈合","entityType":"INCISION_HEALING"},{"name":"甲状腺情况","label":"甲状腺情况","description":"甲状腺探查所见"},{"name":"切除范围","label":"切除范围","description":"如:左叶次全切除"},{"name":"失血量","label":"失血量","entityType":"BLOOD_LOSS"},{"name":"输液量","label":"输液量","entityType":"FLUID_INFUSION"},{"name":"术中并发症","label":"术中并发症","entityType":"COMPLICATION"}]', 1, 'ACTIVE', 0, '普外科甲状腺次全切除术标准模板', 5, '系统管理员');
 
 -- 初始化模板版本记录
-INSERT INTO `surgery_template_version` (`template_id`, `version_no`, `template_content`, `change_log`, `is_current`, `created_user_name`)
-SELECT id, 1, template_content, '初始版本', 1, created_user_name
+INSERT INTO `surgery_template_version` (`template_id`, `version_no`, `template_content`, `placeholders`, `change_log`, `is_current`, `created_user_name`)
+SELECT id, 1, template_content, placeholders, '初始版本', 1, created_user_name
 FROM surgery_template;

@@ -34,6 +34,8 @@ public enum ErrorCode {
     TEMPLATE_CODE_DUPLICATE(6002, "模板编码已存在"),
     TEMPLATE_VERSION_NOT_FOUND(6003, "模板版本不存在"),
 
+    PERMISSION_DENIED(4003, "权限不足，仅管理员可操作"),
+
     SYSTEM_ERROR(9999, "系统内部错误");
 
     private final Integer code;

@@ -1,6 +1,7 @@
 package com.surg.extract.controller;
 
 import com.surg.extract.common.Result;
+import com.surg.extract.common.UserContext;
 import com.surg.extract.dto.*;
 import com.surg.extract.service.SurgeryTemplateService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -52,20 +53,23 @@ public class SurgeryTemplateController {
     }
 
     @PostMapping
-    @Operation(summary = "创建模板", description = "创建新的手术模板")
+    @Operation(summary = "创建模板", description = "创建新的手术模板（仅管理员）")
     public Result<SurgeryTemplateDTO> create(@RequestBody SurgeryTemplateCreateDTO dto) {
+        UserContext.checkAdmin();
         return Result.success("创建成功", templateService.createTemplate(dto));
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "更新模板", description = "更新手术模板，内容变更时自动创建新版本")
+    @Operation(summary = "更新模板", description = "更新手术模板，内容变更时自动创建新版本（仅管理员）")
     public Result<SurgeryTemplateDTO> update(@PathVariable Long id, @RequestBody SurgeryTemplateUpdateDTO dto) {
+        UserContext.checkAdmin();
         return Result.success("更新成功", templateService.updateTemplate(id, dto));
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "删除模板", description = "逻辑删除手术模板")
+    @Operation(summary = "删除模板", description = "逻辑删除手术模板（仅管理员）")
     public Result<Void> delete(@PathVariable Long id) {
+        UserContext.checkAdmin();
         templateService.deleteTemplate(id);
         return Result.success("删除成功");
     }
@@ -85,11 +89,12 @@ public class SurgeryTemplateController {
     }
 
     @PostMapping("/{id}/versions/revert/{versionNo}")
-    @Operation(summary = "回退版本", description = "将模板回退到指定历史版本，自动创建新版本")
+    @Operation(summary = "回退版本", description = "将模板回退到指定历史版本，自动创建新版本（仅管理员）")
     public Result<SurgeryTemplateDTO> revertVersion(
             @PathVariable Long id,
             @PathVariable Integer versionNo,
             @RequestParam(required = false) String changeLog) {
+        UserContext.checkAdmin();
         return Result.success("回退成功", templateService.revertToVersion(id, versionNo, changeLog));
     }
 
@@ -123,8 +128,9 @@ public class SurgeryTemplateController {
     }
 
     @PostMapping("/import")
-    @Operation(summary = "导入模板", description = "导入JSON格式的模板，编码已存在则更新，否则创建")
+    @Operation(summary = "导入模板", description = "导入JSON格式的模板，编码已存在则更新，否则创建（仅管理员）")
     public Result<SurgeryTemplateDTO> importTemplate(@RequestBody TemplateImportDTO dto) {
+        UserContext.checkAdmin();
         return Result.success("导入成功", templateService.importTemplate(dto));
     }
 }

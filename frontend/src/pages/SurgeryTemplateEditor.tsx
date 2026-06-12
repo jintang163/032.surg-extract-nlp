@@ -35,6 +35,7 @@ import Editor from '@monaco-editor/react'
 import { templateApi } from '@/services/api'
 import type { SurgeryTemplate, Placeholder, TemplateStatus } from '@/types'
 import { TemplateStatusMap, EntityTypeLabelMap } from '@/types'
+import { useAuthStore } from '@/store/authStore'
 
 const { Option } = Select
 const { TextArea } = Input
@@ -64,6 +65,7 @@ const SurgeryTemplateEditor: React.FC = () => {
   const params = useParams<{ id?: string }>()
   const isEdit = !!params.id
   const templateId = params.id ? parseInt(params.id) : undefined
+  const { userInfo } = useAuthStore()
 
   const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
@@ -77,12 +79,17 @@ const SurgeryTemplateEditor: React.FC = () => {
   const editorRef = useRef<any>(null)
 
   useEffect(() => {
+    if (userInfo?.role !== 'ADMIN') {
+      message.warning('仅管理员可编辑模板')
+      navigate('/dashboard', { replace: true })
+      return
+    }
     if (isEdit && templateId) {
       loadTemplate()
     } else {
       extractPlaceholdersFromContent(DEFAULT_TEMPLATE_CONTENT)
     }
-  }, [])
+  }, [userInfo])
 
   useEffect(() => {
     extractPlaceholdersFromContent(content)
@@ -182,6 +189,7 @@ const SurgeryTemplateEditor: React.FC = () => {
         if (!values.templateCode) {
           payload.templateCode = `TPL-${Date.now().toString().slice(-8)}`
         }
+        payload.status = status || 'ACTIVE'
         payload.changeLog = values.changeLog || '初始版本'
         result = (await templateApi.create(payload)) as SurgeryTemplate
       }
@@ -205,8 +213,12 @@ const SurgeryTemplateEditor: React.FC = () => {
       fillValues[p.name] = p.defaultValue || `【${p.label || p.name}】`
     })
     try {
-      const filled = await templateApi.fill(0, fillValues)
-      setPreviewFilled(filled)
+      if (templateId) {
+        const filled = await templateApi.fill(templateId, fillValues)
+        setPreviewFilled(filled)
+      } else {
+        throw new Error('no template id')
+      }
     } catch {
       let temp = content
       placeholders.forEach((p) => {

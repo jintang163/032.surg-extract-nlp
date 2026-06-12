@@ -42,4 +42,8 @@ public class RecordQueryDTO {
     private LocalDateTime uploadTime;
 
     private LocalDateTime confirmTime;
+
+    private Long templateId;
+
+    private String templateDraft;
 }

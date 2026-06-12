@@ -27,4 +27,6 @@ public class SurgeryTemplateCreateDTO {
     private Integer sortOrder;
 
     private String changeLog;
+
+    private String status;
 }

@@ -34,12 +34,16 @@ const MainLayout: React.FC = () => {
       label: '手术记录管理',
       onClick: () => navigate('/records'),
     },
-    {
-      key: '/templates',
-      icon: <FileMarkdownOutlined />,
-      label: '手术模板管理',
-      onClick: () => navigate('/templates'),
-    },
+    ...(userInfo?.role === 'ADMIN'
+      ? [
+          {
+            key: '/templates',
+            icon: <FileMarkdownOutlined />,
+            label: '手术模板管理',
+            onClick: () => navigate('/templates'),
+          },
+        ]
+      : []),
   ]
 
   const getActiveKey = () => {

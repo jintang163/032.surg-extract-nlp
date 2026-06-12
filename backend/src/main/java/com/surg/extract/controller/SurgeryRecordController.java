@@ -132,4 +132,15 @@ public class SurgeryRecordController {
     public Result<Long> getProcessingTime(@PathVariable Long id) {
         return Result.success(surgeryRecordService.getRecordProcessingTime(id));
     }
+
+    @PutMapping("/{id}/template-draft")
+    @Operation(summary = "保存模板草稿", description = "保存模板生成的手术记录草稿内容")
+    public Result<Void> saveTemplateDraft(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> body) {
+        Long templateId = body.get("templateId") != null ? Long.valueOf(body.get("templateId").toString()) : null;
+        String draftContent = body.get("draftContent") != null ? body.get("draftContent").toString() : null;
+        surgeryRecordService.saveTemplateDraft(id, templateId, draftContent);
+        return Result.success("草稿已保存");
+    }
 }

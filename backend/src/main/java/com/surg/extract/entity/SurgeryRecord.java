@@ -95,6 +95,11 @@ public class SurgeryRecord implements Serializable {
 
     private String hisSyncMessage;
 
+    private Long templateId;
+
+    @TableField(typeHandler = org.apache.ibatis.type.StringTypeHandler.class)
+    private String templateDraft;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdTime;
 

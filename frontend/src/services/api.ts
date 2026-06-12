@@ -182,6 +182,9 @@ export const recordApi = {
     http.put<void>(`/records/${id}/entities`, entities),
 
   getProcessingTime: (id: number) => http.get<number>(`/records/${id}/processing-time`),
+
+  saveTemplateDraft: (id: number, templateId: number | null, draftContent: string) =>
+    http.put<void>(`/records/${id}/template-draft`, { templateId, draftContent }),
 }
 
 export const homePageApi = {

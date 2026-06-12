@@ -37,10 +37,11 @@ import {
   AudioOutlined,
   ScissorOutlined,
   MergeCellsOutlined,
+  FileMarkdownOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
-import { recordApi, homePageApi } from '@/services/api'
-import type { SurgeryRecord, SurgeryEntity, EntityType, ProcessStatus } from '@/types'
+import { recordApi, templateApi } from '@/services/api'
+import type { SurgeryRecord, SurgeryEntity, EntityType, ProcessStatus, SurgeryTemplate } from '@/types'
 import { ProcessStatusMap, EntityTypeLabelMap, SourceMap } from '@/types'
 import dayjs from 'dayjs'
 
@@ -66,6 +67,11 @@ const RecordDetail: React.FC = () => {
   const [entityForm] = Form.useForm()
 
   const [selectedEntityType, setSelectedEntityType] = useState<EntityType | 'ALL'>('ALL')
+
+  const [templateSelectVisible, setTemplateSelectVisible] = useState(false)
+  const [availableTemplates, setAvailableTemplates] = useState<SurgeryTemplate[]>([])
+  const [templateLoading, setTemplateLoading] = useState(false)
+  const [applyingTemplate, setApplyingTemplate] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -139,6 +145,38 @@ const RecordDetail: React.FC = () => {
       entityUnit: entity.entityUnit,
     })
     setEntityDrawer(true)
+  }
+
+  const handleOpenTemplateSelect = async () => {
+    setTemplateSelectVisible(true)
+    setTemplateLoading(true)
+    try {
+      const list = (await templateApi.available({
+        surgeryType: record?.department || undefined,
+        department: record?.department || undefined,
+      })) as SurgeryTemplate[]
+      setAvailableTemplates(list || [])
+    } catch (e) {
+      message.error('加载模板列表失败')
+    } finally {
+      setTemplateLoading(false)
+    }
+  }
+
+  const handleApplyTemplate = async (templateId: number) => {
+    setApplyingTemplate(true)
+    try {
+      const filledContent = await templateApi.fillFromRecord(templateId, recordId)
+      await recordApi.saveTemplateDraft(recordId, templateId, filledContent)
+      setOcrText(filledContent)
+      setEditingText(filledContent)
+      setTemplateSelectVisible(false)
+      message.success('模板已应用，草稿已保存至记录')
+    } catch (e: any) {
+      message.error(e?.message || '应用模板失败')
+    } finally {
+      setApplyingTemplate(false)
+    }
   }
 
   const filteredEntities = useMemo(
@@ -451,6 +489,14 @@ const RecordDetail: React.FC = () => {
               onClick={() => navigate(`/homepage/${recordId}`)}
             >
               填写病案首页
+            </Button>
+          )}
+          {(record?.processStatus === 'NER_DONE' || record?.processStatus === 'COMPLETED') && (
+            <Button
+              icon={<FileMarkdownOutlined />}
+              onClick={handleOpenTemplateSelect}
+            >
+              应用模板
             </Button>
           )}
         </Space>
@@ -870,6 +916,65 @@ const RecordDetail: React.FC = () => {
           </Form>
         )}
       </Drawer>
+
+      <Modal
+        title="选择手术模板"
+        open={templateSelectVisible}
+        onCancel={() => setTemplateSelectVisible(false)}
+        footer={null}
+        width={680}
+      >
+        <Table
+          rowKey="id"
+          size="small"
+          loading={templateLoading}
+          dataSource={availableTemplates}
+          pagination={false}
+          locale={{ emptyText: <Empty description="暂无可用模板" /> }}
+          columns={[
+            {
+              title: '模板名称',
+              dataIndex: 'templateName',
+              width: 200,
+              render: (text: string, r: SurgeryTemplate) => (
+                <Space direction="vertical" size={2}>
+                  <span>{text}</span>
+                  <span style={{ fontSize: 12, color: '#8c8c8c' }}>{r.surgeryType}</span>
+                </Space>
+              ),
+            },
+            {
+              title: '科室',
+              dataIndex: 'department',
+              width: 100,
+              render: (t: string) => t || '全院通用',
+            },
+            {
+              title: '占位符',
+              key: 'ph',
+              width: 120,
+              render: (_: any, r: SurgeryTemplate) => (
+                <Tag color="geekblue">{(r.placeholders || []).length} 个</Tag>
+              ),
+            },
+            {
+              title: '操作',
+              key: 'action',
+              width: 100,
+              render: (_: any, r: SurgeryTemplate) => (
+                <Button
+                  type="primary"
+                  size="small"
+                  loading={applyingTemplate}
+                  onClick={() => handleApplyTemplate(r.id)}
+                >
+                  应用
+                </Button>
+              ),
+            },
+          ]}
+        />
+      </Modal>
     </div>
   )
 }
