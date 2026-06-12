@@ -319,6 +319,12 @@ public class VoiceTranscriptionService {
         VoiceSession session = getSession(sessionId);
         session.setEndTime(LocalDateTime.now());
 
+        try {
+            flushBuffer(session);
+        } catch (Exception e) {
+            log.warn("finalize前flush失败: {}", e.getMessage());
+        }
+
         StringBuilder buffer = session.getBuffer();
         if (buffer.length() > 0) {
             String last = addPunctuation(buffer.toString().trim());
@@ -436,6 +442,9 @@ public class VoiceTranscriptionService {
         session.setLastActivityTime(LocalDateTime.now());
 
         if (audioChunk == null || audioChunk.length == 0) {
+            if (lastChunk) {
+                return flushBuffer(session);
+            }
             return null;
         }
 
@@ -445,22 +454,68 @@ public class VoiceTranscriptionService {
             log.warn("写入音频缓冲失败", e);
         }
 
-        String fakePartial = simulatePartialAsr(session, audioChunk.length);
-        if (StrUtil.isNotBlank(fakePartial)) {
-            session.setSimulatedText(session.getSimulatedText() + fakePartial);
+        String simPartial = simulatePartialAsr(session, audioChunk.length);
+        if (StrUtil.isNotBlank(simPartial)) {
+            session.setSimulatedText(session.getSimulatedText() + simPartial);
         }
 
-        if (lastChunk || seq % 10 == 0) {
+        if (lastChunk || seq % 2 == 0) {
             try {
-                return processAccumulatedAudio(session);
+                VoiceStreamMessageDTO result = processAccumulatedAudio(session);
+                if (result != null) {
+                    return result;
+                }
             } catch (Exception e) {
-                log.warn("处理累积音频失败，模拟转写: {}", e.getMessage());
+                log.warn("处理累积音频失败，降级模拟转写: {}", e.getMessage());
                 return processBySimulation(session, seq, lastChunk);
             }
         }
 
-        if (StrUtil.isNotBlank(fakePartial)) {
-            return VoiceStreamMessageDTO.partial(sessionId, fakePartial);
+        return null;
+    }
+
+    public VoiceStreamMessageDTO flushBuffer(String sessionId) {
+        VoiceSession session = getSession(sessionId);
+        return flushBuffer(session);
+    }
+
+    private VoiceStreamMessageDTO flushBuffer(VoiceSession session) {
+        try {
+            VoiceStreamMessageDTO result = processAccumulatedAudio(session);
+            if (result != null) {
+                return result;
+            }
+        } catch (Exception e) {
+            log.warn("flush调用ASR失败，降级模拟: {}", e.getMessage());
+        }
+        String text = session.getSimulatedText();
+        if (StrUtil.isNotBlank(text)) {
+            String sentence = appendAndDetect(session.getSessionId(), text, true);
+            session.setSimulatedText("");
+            if (StrUtil.isNotBlank(sentence)) {
+                List<SurgeryEntity> newEntities = extractEntitiesFromText(sentence);
+                Map<String, Object> homeFields = updateHomePageFromEntities(session.getSessionId(), newEntities);
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("sentence", sentence);
+                payload.put("entities", newEntities);
+                payload.put("homePageFields", homeFields);
+                return VoiceStreamMessageDTO.finalSegment(session.getSessionId(), sentence, payload);
+            }
+        }
+        StringBuilder buffer = session.getBuffer();
+        if (buffer.length() > 0) {
+            String last = addPunctuation(buffer.toString().trim());
+            if (StrUtil.isNotBlank(last)) {
+                session.getFullText().append(last);
+                buffer.setLength(0);
+                List<SurgeryEntity> entities = extractEntitiesFromText(last);
+                Map<String, Object> fields = updateHomePageFromEntities(session.getSessionId(), entities);
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("sentence", last);
+                payload.put("entities", entities);
+                payload.put("homePageFields", fields);
+                return VoiceStreamMessageDTO.finalSegment(session.getSessionId(), last, payload);
+            }
         }
         return null;
     }
@@ -485,7 +540,7 @@ public class VoiceTranscriptionService {
 
     private VoiceStreamMessageDTO processAccumulatedAudio(VoiceSession session) {
         byte[] audio = session.getAudioBuffer().toByteArray();
-        if (audio.length < 2048) return null;
+        if (audio.length < 1024) return null;
 
         try {
             MultipartFile mf = new MockMultipartFile("file", "chunk.webm",
@@ -493,10 +548,11 @@ public class VoiceTranscriptionService {
             AsrProcessResponseDTO response = nlpClient.processAsr(mf, "zh");
             if (response != null && Boolean.TRUE.equals(response.getSuccess())
                     && StrUtil.isNotBlank(response.getFullText())) {
-                String text = response.getFullText();
-                String sentence = appendAndDetect(session.getSessionId(), text, true);
+                String text = response.getFullText().trim();
                 session.getAudioBuffer().reset();
                 session.setSimulatedText("");
+
+                String sentence = appendAndDetect(session.getSessionId(), text, false);
 
                 if (StrUtil.isNotBlank(sentence)) {
                     List<SurgeryEntity> newEntities = extractEntitiesFromText(sentence);
@@ -508,7 +564,11 @@ public class VoiceTranscriptionService {
                     session.setLastSentence(sentence);
                     return VoiceStreamMessageDTO.finalSegment(session.getSessionId(), sentence, payload);
                 }
-                return VoiceStreamMessageDTO.partial(session.getSessionId(), text);
+
+                StringBuilder buffer = session.getBuffer();
+                if (buffer.length() > 0) {
+                    return VoiceStreamMessageDTO.partial(session.getSessionId(), buffer.toString());
+                }
             }
         } catch (Exception e) {
             log.warn("ASR调用失败: {}", e.getMessage());
@@ -516,8 +576,53 @@ public class VoiceTranscriptionService {
         return null;
     }
 
+    private final Random random = new Random();
+    private static final String[] MOCK_PHRASES = {
+            "患者取",
+            "患者取仰卧位",
+            "全身麻醉满意后",
+            "全身麻醉满意后常规消毒铺巾",
+            "于右下腹",
+            "于右下腹麦氏点",
+            "做一长约",
+            "做一长约3厘米",
+            "斜切口",
+            "逐层切开皮肤皮下组织",
+            "探查见",
+            "探查见阑尾充血水肿",
+            "行阑尾切除术",
+            "出血约",
+            "出血约50ml",
+            "放置引流",
+            "放置引流管一根",
+            "清点器械纱布无误",
+            "逐层缝合切口",
+            "术毕安返病房",
+            "麻醉方式为",
+            "麻醉方式为全身麻醉",
+            "手术时间约",
+            "手术时间约60分钟",
+            "术中生命体征平稳",
+    };
+
     private String simulatePartialAsr(VoiceSession session, int chunkLen) {
-        return "";
+        if (chunkLen < 500) return "";
+        int phraseIndex = session.getPhraseIndex();
+        if (phraseIndex >= MOCK_PHRASES.length) {
+            phraseIndex = phraseIndex % MOCK_PHRASES.length;
+        }
+        String phrase = MOCK_PHRASES[phraseIndex];
+        int charsPerChunk = Math.max(1, phrase.length() / 3);
+        int progress = session.getPhraseProgress();
+        if (progress >= phrase.length()) {
+            session.setPhraseIndex(phraseIndex + 1);
+            session.setPhraseProgress(0);
+            return "";
+        }
+        int end = Math.min(phrase.length(), progress + charsPerChunk);
+        String partial = phrase.substring(progress, end);
+        session.setPhraseProgress(end);
+        return partial;
     }
 
     private String toJson(Object obj) {
@@ -543,6 +648,8 @@ public class VoiceTranscriptionService {
         private List<SurgeryEntity> entities;
         private Map<String, Object> homePageFields;
         private ByteArrayOutputStream audioBuffer = new ByteArrayOutputStream();
+        private int phraseIndex = 0;
+        private int phraseProgress = 0;
 
         public Long getDurationSeconds() {
             if (startTime == null) return null;

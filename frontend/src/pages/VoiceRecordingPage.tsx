@@ -338,19 +338,22 @@ const VoiceRecordingPage: React.FC = () => {
       }
     }
     try {
-      await voiceApi.uploadChunk(session.sessionId, seq, blob, false)
+      const resp = (await voiceApi.uploadChunk(
+        session.sessionId,
+        seq,
+        blob,
+        false
+      )) as any
+      if (resp && resp.code === 0 && resp.data) {
+        handleWsMessage(JSON.stringify(resp.data))
+      }
     } catch (e) {
       console.warn('上传分片失败', e)
     }
   }
 
-  const handleWsMessage = (raw: string) => {
-    let msg: VoiceStreamMessage
-    try {
-      msg = JSON.parse(raw)
-    } catch {
-      return
-    }
+  const applyMessage = (msg: VoiceStreamMessage) => {
+    if (!msg || !msg.type) return
     switch (msg.type) {
       case 'PARTIAL':
         if (msg.text) setPartialText(msg.text)
@@ -400,8 +403,23 @@ const VoiceRecordingPage: React.FC = () => {
         setErrorMsg(msg.errorMsg || '转写服务异常')
         break
       case 'PONG':
+      default:
         break
     }
+  }
+
+  const handleWsMessage = (raw: string | object) => {
+    let msg: VoiceStreamMessage
+    if (typeof raw === 'string') {
+      try {
+        msg = JSON.parse(raw)
+      } catch {
+        return
+      }
+    } else {
+      msg = raw as VoiceStreamMessage
+    }
+    applyMessage(msg)
   }
 
   const pauseRecording = () => {

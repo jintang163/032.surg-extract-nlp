@@ -78,16 +78,46 @@ public class VoiceTranscriptionWebSocket {
                 return;
             }
             if ("STOP".equalsIgnoreCase(text) || "END".equalsIgnoreCase(text)) {
+                try {
+                    VoiceStreamMessageDTO flushed = transcriptionService.flushBuffer(sessionId);
+                    if (flushed != null) {
+                        sendMessage(sessionId, flushed);
+                        if ("FINAL_SEGMENT".equals(flushed.getType()) && flushed.getData() instanceof java.util.Map) {
+                            java.util.Map<?, ?> payload = (java.util.Map<?, ?>) flushed.getData();
+                            if (payload.get("homePageFields") != null) {
+                                sendMessage(sessionId, VoiceStreamMessageDTO.homePageUpdate(sessionId, payload.get("homePageFields")));
+                            }
+                            if (payload.get("entities") != null) {
+                                sendMessage(sessionId, VoiceStreamMessageDTO.entityUpdate(sessionId, payload.get("entities")));
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("STOP前flush失败: sessionId={}", sessionId, e);
+                }
                 VoiceTranscriptionService.VoiceSession vs = transcriptionService.finalizeSession(sessionId);
                 sendMessage(sessionId, VoiceStreamMessageDTO.stopped(sessionId,
                         vs.getFullText().toString(), vs.getHomePageFields()));
                 return;
             }
             if ("FLUSH".equalsIgnoreCase(text)) {
-                AtomicInteger counter = SEQ_COUNTERS.get(sessionId);
-                int seq = counter != null ? counter.incrementAndGet() : -1;
-                VoiceStreamMessageDTO result = transcriptionService.processChunk(sessionId, new byte[0], seq, true);
-                if (result != null) sendMessage(sessionId, result);
+                try {
+                    VoiceStreamMessageDTO result = transcriptionService.flushBuffer(sessionId);
+                    if (result != null) {
+                        sendMessage(sessionId, result);
+                        if ("FINAL_SEGMENT".equals(result.getType()) && result.getData() instanceof java.util.Map) {
+                            java.util.Map<?, ?> payload = (java.util.Map<?, ?>) result.getData();
+                            if (payload.get("homePageFields") != null) {
+                                sendMessage(sessionId, VoiceStreamMessageDTO.homePageUpdate(sessionId, payload.get("homePageFields")));
+                            }
+                            if (payload.get("entities") != null) {
+                                sendMessage(sessionId, VoiceStreamMessageDTO.entityUpdate(sessionId, payload.get("entities")));
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("FLUSH失败: sessionId={}", sessionId, e);
+                }
                 return;
             }
         } catch (Exception e) {
@@ -98,6 +128,23 @@ public class VoiceTranscriptionWebSocket {
 
     @OnClose
     public void onClose(@PathParam("sessionId") String sessionId, Session session, CloseReason reason) {
+        try {
+            VoiceStreamMessageDTO flushed = transcriptionService.flushBuffer(sessionId);
+            if (flushed != null) {
+                sendMessage(sessionId, flushed);
+                if ("FINAL_SEGMENT".equals(flushed.getType()) && flushed.getData() instanceof java.util.Map) {
+                    java.util.Map<?, ?> payload = (java.util.Map<?, ?>) flushed.getData();
+                    if (payload.get("homePageFields") != null) {
+                        sendMessage(sessionId, VoiceStreamMessageDTO.homePageUpdate(sessionId, payload.get("homePageFields")));
+                    }
+                    if (payload.get("entities") != null) {
+                        sendMessage(sessionId, VoiceStreamMessageDTO.entityUpdate(sessionId, payload.get("entities")));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("onClose flush失败: sessionId={}", sessionId, e);
+        }
         SESSIONS.remove(sessionId);
         SEQ_COUNTERS.remove(sessionId);
         try {
