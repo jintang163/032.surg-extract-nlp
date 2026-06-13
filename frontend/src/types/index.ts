@@ -649,8 +649,9 @@ export interface HisSyncLog {
 
 export const SyncTypeMap: Record<string, { label: string; color: string }> = {
   HOME_PAGE: { label: '病案首页', color: 'blue' },
-  ROLLBACK: { label: '回滚', color: 'orange' },
+  ROLLBACK: { label: '首页回滚', color: 'orange' },
   BILLING: { label: '计费', color: 'green' },
+  BILLING_ROLLBACK: { label: '计费回滚', color: 'gold' },
 }
 
 export const SyncDirectionMap: Record<string, { label: string; color: string }> = {
@@ -663,4 +664,18 @@ export const SyncStatusMap: Record<string, { label: string; color: string }> = {
   FAILED: { label: '失败', color: 'error' },
   SKIPPED: { label: '跳过', color: 'default' },
   PENDING: { label: '处理中', color: 'processing' },
+}
+
+export interface HisSyncStatus {
+  status: number
+  label: string
+  color: string
+  text: string
+}
+
+export const HisSyncedMap: Record<number, { label: string; status: string; color: string }> = {
+  0: { label: '未同步', status: 'default', color: '#8c8c8c' },
+  1: { label: '已同步', status: 'success', color: '#52c41a' },
+  2: { label: '同步失败', status: 'error', color: '#ff4d4f' },
+  3: { label: '回滚失败', status: 'warning', color: '#faad14' },
 }

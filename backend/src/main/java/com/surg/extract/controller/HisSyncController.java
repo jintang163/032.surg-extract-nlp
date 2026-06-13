@@ -9,12 +9,15 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Api(tags = "HIS同步管理")
 @RestController
 @RequestMapping("/api/his-sync")
@@ -26,13 +29,16 @@ public class HisSyncController {
 
     @ApiOperation("同步病案首页到HIS")
     @PostMapping("/sync/{recordId}")
-    public Result<Map<String, Object>> syncToHis(@PathVariable @ApiParam("记录ID") Long recordId) {
+    public Result<Map<String, Object>> syncToHis(
+            @PathVariable @ApiParam("记录ID") Long recordId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Name", required = false) String userName) {
         MedicalRecordHome home = homePageService.getByRecordId(recordId);
         if (home == null) {
             return Result.error("病案首页不存在");
         }
 
-        boolean success = hisSyncService.syncToHis(home);
+        boolean success = hisSyncService.syncToHis(home, userId, userName);
 
         Map<String, Object> result = new HashMap<>();
         result.put("success", success);
@@ -50,8 +56,10 @@ public class HisSyncController {
     @PostMapping("/pull/{recordId}")
     public Result<Map<String, Object>> pullFromHis(
             @PathVariable @ApiParam("记录ID") Long recordId,
-            @RequestParam @ApiParam("住院号") String hospitalNo) {
-        boolean success = hisSyncService.syncFromHis(recordId, hospitalNo);
+            @RequestParam @ApiParam("住院号") String hospitalNo,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Name", required = false) String userName) {
+        boolean success = hisSyncService.syncFromHis(recordId, hospitalNo, userId, userName);
 
         Map<String, Object> result = new HashMap<>();
         result.put("success", success);
@@ -67,8 +75,11 @@ public class HisSyncController {
 
     @ApiOperation("回滚HIS同步")
     @PostMapping("/rollback/{recordId}")
-    public Result<Map<String, Object>> rollbackSync(@PathVariable @ApiParam("记录ID") Long recordId) {
-        boolean success = hisSyncService.rollbackSync(recordId);
+    public Result<Map<String, Object>> rollbackSync(
+            @PathVariable @ApiParam("记录ID") Long recordId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Name", required = false) String userName) {
+        boolean success = hisSyncService.rollbackSync(recordId, userId, userName);
 
         Map<String, Object> result = new HashMap<>();
         result.put("success", success);
@@ -103,20 +114,24 @@ public class HisSyncController {
         Map<String, Object> result = new HashMap<>();
         result.put("hisEnabled", hisSyncService.isHisEnabled());
         result.put("latestLog", latestLog);
-        result.put("synced", latestLog != null && "SUCCESS".equals(latestLog.getSyncStatus()));
+        result.put("synced", latestLog != null && "SUCCESS".equals(latestLog.getSyncStatus())
+                && "HOME_PAGE".equals(latestLog.getSyncType()));
 
         return Result.success(result);
     }
 
     @ApiOperation("触发计费")
     @PostMapping("/billing/{recordId}")
-    public Result<Map<String, Object>> triggerBilling(@PathVariable @ApiParam("记录ID") Long recordId) {
+    public Result<Map<String, Object>> triggerBilling(
+            @PathVariable @ApiParam("记录ID") Long recordId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Name", required = false) String userName) {
         MedicalRecordHome home = homePageService.getByRecordId(recordId);
         if (home == null) {
             return Result.error("病案首页不存在");
         }
 
-        String result = hisSyncService.triggerBilling(home);
+        String result = hisSyncService.triggerBilling(home, userId, userName);
 
         Map<String, Object> response = new HashMap<>();
         response.put("recordId", recordId);
