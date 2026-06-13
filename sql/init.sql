@@ -659,3 +659,332 @@ FROM department_custom_field f WHERE f.department='骨科' AND f.field_code='IMP
 INSERT INTO `custom_field_sample` (`field_id`, `text`, `entity_value`, `start_pos`, `end_pos`, `source`, `created_user_name`)
 SELECT f.id, '植入+21.0D人工晶体，型号为Alcon SN60WF。', '+21.0D', 3, 9, 'MANUAL', '系统管理员'
 FROM department_custom_field f WHERE f.department='眼科' AND f.field_code='INTRAOCULAR_LENS_POWER';
+
+-- ============================================================
+-- 医学术语映射库
+-- ============================================================
+
+-- -----------------------------------------------------------
+-- 13. 术语分类表
+-- -----------------------------------------------------------
+DROP TABLE IF EXISTS `medical_term_category`;
+CREATE TABLE `medical_term_category` (
+    `id`                BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `category_code`     VARCHAR(64)     NOT NULL COMMENT '分类编码',
+    `category_name`     VARCHAR(128)    NOT NULL COMMENT '分类名称',
+    `parent_id`         BIGINT          DEFAULT NULL COMMENT '父分类ID',
+    `tree_path`         VARCHAR(512)    DEFAULT NULL COMMENT '树形路径(如: 1,2,3)',
+    `sort_order`        INT             DEFAULT 0 COMMENT '排序号',
+    `description`       VARCHAR(512)    DEFAULT NULL COMMENT '分类描述',
+    `enabled`           TINYINT         NOT NULL DEFAULT 1 COMMENT '是否启用: 0-禁用, 1-启用',
+    `created_user_id`   BIGINT          DEFAULT NULL COMMENT '创建人ID',
+    `created_user_name` VARCHAR(64)     DEFAULT NULL COMMENT '创建人姓名',
+    `created_time`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_time`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted`           TINYINT         NOT NULL DEFAULT 0 COMMENT '逻辑删除: 0-未删除, 1-已删除',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_category_code` (`category_code`),
+    KEY `idx_parent_id` (`parent_id`),
+    KEY `idx_enabled` (`enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='医学术语分类表';
+
+-- -----------------------------------------------------------
+-- 14. ICD-10编码表
+-- -----------------------------------------------------------
+DROP TABLE IF EXISTS `medical_term_icd`;
+CREATE TABLE `medical_term_icd` (
+    `id`                BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `icd_code`          VARCHAR(32)     NOT NULL COMMENT 'ICD-10编码',
+    `icd_name`          VARCHAR(255)    NOT NULL COMMENT 'ICD-10名称',
+    `icd_version`       VARCHAR(16)     NOT NULL DEFAULT 'ICD-10' COMMENT 'ICD版本: ICD-10, ICD-9-CM-3',
+    `chapter`           VARCHAR(8)      DEFAULT NULL COMMENT '章',
+    `block`             VARCHAR(16)     DEFAULT NULL COMMENT '节',
+    `category_code`     VARCHAR(64)     DEFAULT NULL COMMENT '分类编码',
+    `description`       VARCHAR(1024)   DEFAULT NULL COMMENT '详细说明',
+    `inclusion_terms`   TEXT            DEFAULT NULL COMMENT '包含术语(JSON数组)',
+    `exclusion_terms`   TEXT            DEFAULT NULL COMMENT '排除术语(JSON数组)',
+    `enabled`           TINYINT         NOT NULL DEFAULT 1 COMMENT '是否启用: 0-禁用, 1-启用',
+    `created_time`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_time`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_icd_code_version` (`icd_code`, `icd_version`),
+    KEY `idx_icd_name` (`icd_name`),
+    KEY `idx_version` (`icd_version`),
+    KEY `idx_enabled` (`enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='ICD编码表';
+
+-- -----------------------------------------------------------
+-- 15. 标准医学术语表
+-- -----------------------------------------------------------
+DROP TABLE IF EXISTS `medical_term`;
+CREATE TABLE `medical_term` (
+    `id`                BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `term_code`         VARCHAR(64)     NOT NULL COMMENT '术语编码(业务唯一)',
+    `standard_name`     VARCHAR(255)    NOT NULL COMMENT '标准名称',
+    `pinyin`            VARCHAR(255)    DEFAULT NULL COMMENT '拼音',
+    `pinyin_abbr`       VARCHAR(64)     DEFAULT NULL COMMENT '拼音首字母缩写',
+    `category_id`       BIGINT          DEFAULT NULL COMMENT '分类ID',
+    `term_type`         VARCHAR(32)     NOT NULL DEFAULT 'SURGERY' COMMENT '术语类型: SURGERY-手术名称, DIAGNOSIS-诊断, ANESTHESIA-麻醉, INSTRUMENT-器械, DRUG-药品, OTHER-其他',
+    `icd_id`            BIGINT          DEFAULT NULL COMMENT '关联ICD编码ID',
+    `icd_code`          VARCHAR(32)     DEFAULT NULL COMMENT 'ICD编码(冗余)',
+    `icd_name`          VARCHAR(255)    DEFAULT NULL COMMENT 'ICD名称(冗余)',
+    `icd_version`       VARCHAR(16)     DEFAULT NULL COMMENT 'ICD版本',
+    `definition`        TEXT            DEFAULT NULL COMMENT '术语定义',
+    `usage_count`       INT             DEFAULT 0 COMMENT '使用次数',
+    `match_count`       INT             DEFAULT 0 COMMENT '匹配成功次数',
+    `confidence`        DECIMAL(5,4)    DEFAULT 1.0000 COMMENT '置信度',
+    `review_status`     VARCHAR(32)     NOT NULL DEFAULT 'PENDING' COMMENT '审核状态: PENDING-待审核, APPROVED-已审核, REJECTED-已拒绝',
+    `reviewed_by`       BIGINT          DEFAULT NULL COMMENT '审核人ID',
+    `reviewed_time`     DATETIME        DEFAULT NULL COMMENT '审核时间',
+    `review_remark`     VARCHAR(512)    DEFAULT NULL COMMENT '审核备注',
+    `enabled`           TINYINT         NOT NULL DEFAULT 1 COMMENT '是否启用: 0-禁用, 1-启用',
+    `created_user_id`   BIGINT          DEFAULT NULL COMMENT '创建人ID',
+    `created_user_name` VARCHAR(64)     DEFAULT NULL COMMENT '创建人姓名',
+    `created_time`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_time`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted`           TINYINT         NOT NULL DEFAULT 0 COMMENT '逻辑删除: 0-未删除, 1-已删除',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_term_code` (`term_code`),
+    KEY `idx_standard_name` (`standard_name`),
+    KEY `idx_category_id` (`category_id`),
+    KEY `idx_term_type` (`term_type`),
+    KEY `idx_icd_code` (`icd_code`),
+    KEY `idx_pinyin_abbr` (`pinyin_abbr`),
+    KEY `idx_review_status` (`review_status`),
+    KEY `idx_enabled` (`enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='标准医学术语表';
+
+-- -----------------------------------------------------------
+-- 16. 术语同义词表(MySQL存储，与Neo4j双向同步)
+-- -----------------------------------------------------------
+DROP TABLE IF EXISTS `medical_term_alias`;
+CREATE TABLE `medical_term_alias` (
+    `id`                BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `term_id`           BIGINT          NOT NULL COMMENT '标准术语ID',
+    `alias_name`        VARCHAR(255)    NOT NULL COMMENT '别名/同义词',
+    `pinyin`            VARCHAR(255)    DEFAULT NULL COMMENT '拼音',
+    `pinyin_abbr`       VARCHAR(64)     DEFAULT NULL COMMENT '拼音首字母缩写',
+    `alias_type`        VARCHAR(32)     NOT NULL DEFAULT 'SYNONYM' COMMENT '别名类型: SYNONYM-同义词, ABBREVIATION-缩写, MISTAKE-常见误写, TRANSLATION-译名, REGIONAL-地域说法',
+    `similarity_score`  DECIMAL(5,4)    DEFAULT 1.0000 COMMENT '相似度得分',
+    `source`            VARCHAR(32)     NOT NULL DEFAULT 'MANUAL' COMMENT '来源: MANUAL-人工添加, AUTO-自动发现, IMPORT-批量导入, EXTRACT-文本抽取',
+    `usage_count`       INT             DEFAULT 0 COMMENT '使用次数',
+    `match_count`       INT             DEFAULT 0 COMMENT '匹配成功次数',
+    `graph_node_id`     VARCHAR(64)     DEFAULT NULL COMMENT 'Neo4j图节点ID',
+    `review_status`     VARCHAR(32)     NOT NULL DEFAULT 'PENDING' COMMENT '审核状态: PENDING-待审核, APPROVED-已审核, REJECTED-已拒绝',
+    `reviewed_by`       BIGINT          DEFAULT NULL COMMENT '审核人ID',
+    `reviewed_time`     DATETIME        DEFAULT NULL COMMENT '审核时间',
+    `enabled`           TINYINT         NOT NULL DEFAULT 1 COMMENT '是否启用: 0-禁用, 1-启用',
+    `created_user_id`   BIGINT          DEFAULT NULL COMMENT '创建人ID',
+    `created_user_name` VARCHAR(64)     DEFAULT NULL COMMENT '创建人姓名',
+    `created_time`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_time`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted`           TINYINT         NOT NULL DEFAULT 0 COMMENT '逻辑删除: 0-未删除, 1-已删除',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_term_alias` (`term_id`, `alias_name`),
+    KEY `idx_alias_name` (`alias_name`),
+    KEY `idx_term_id` (`term_id`),
+    KEY `idx_pinyin_abbr` (`pinyin_abbr`),
+    KEY `idx_alias_type` (`alias_type`),
+    KEY `idx_review_status` (`review_status`),
+    KEY `idx_enabled` (`enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='医学术语别名表';
+
+-- -----------------------------------------------------------
+-- 17. 术语映射日志表
+-- -----------------------------------------------------------
+DROP TABLE IF EXISTS `medical_term_mapping_log`;
+CREATE TABLE `medical_term_mapping_log` (
+    `id`                BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `record_id`         BIGINT          DEFAULT NULL COMMENT '关联手术记录ID',
+    `source_text`       VARCHAR(512)    NOT NULL COMMENT '原始文本',
+    `standard_term_id`  BIGINT          DEFAULT NULL COMMENT '映射到的标准术语ID',
+    `standard_term_name` VARCHAR(255)   DEFAULT NULL COMMENT '标准术语名称',
+    `icd_code`          VARCHAR(32)     DEFAULT NULL COMMENT 'ICD编码',
+    `match_method`      VARCHAR(32)     NOT NULL COMMENT '匹配方式: EXACT-精确匹配, FUZZY-模糊匹配, GRAPH-图谱推理, PINYIN-拼音匹配, NER-NER抽取',
+    `similarity_score`  DECIMAL(5,4)    DEFAULT NULL COMMENT '相似度得分',
+    `match_path`        TEXT            DEFAULT NULL COMMENT '匹配路径(图谱推理时使用, JSON格式)',
+    `mapping_success`   TINYINT         NOT NULL DEFAULT 1 COMMENT '映射是否成功: 0-失败, 1-成功',
+    `fail_reason`       VARCHAR(255)    DEFAULT NULL COMMENT '失败原因',
+    `mapping_time`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '映射时间',
+    `cost_ms`           INT             DEFAULT 0 COMMENT '耗时(毫秒)',
+    `created_time`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_record_id` (`record_id`),
+    KEY `idx_standard_term_id` (`standard_term_id`),
+    KEY `idx_match_method` (`match_method`),
+    KEY `idx_mapping_time` (`mapping_time`),
+    KEY `idx_mapping_success` (`mapping_success`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='术语映射日志表';
+
+-- ============================================================
+-- 初始化医学术语映射库数据
+-- ============================================================
+
+-- 初始化术语分类
+INSERT INTO `medical_term_category` (`category_code`, `category_name`, `parent_id`, `sort_order`, `description`, `created_user_name`) VALUES
+('SURGERY', '手术操作', NULL, 1, '手术操作相关术语', '系统管理员'),
+('SURGERY-GENERAL', '普外科手术', 1, 1, '普外科常见手术', '系统管理员'),
+('SURGERY-ORTHOPEDIC', '骨科手术', 1, 2, '骨科常见手术', '系统管理员'),
+('SURGERY-OBGYN', '妇产科手术', 1, 3, '妇产科常见手术', '系统管理员'),
+('SURGERY-OPHTHALMIC', '眼科手术', 1, 4, '眼科常见手术', '系统管理员'),
+('DIAGNOSIS', '诊断术语', NULL, 2, '疾病诊断相关术语', '系统管理员'),
+('ANESTHESIA', '麻醉方式', NULL, 3, '麻醉相关术语', '系统管理员'),
+('INSTRUMENT', '手术器械', NULL, 4, '手术器械相关术语', '系统管理员');
+
+-- 初始化ICD编码(手术操作ICD-9-CM-3)
+INSERT INTO `medical_term_icd` (`icd_code`, `icd_name`, `icd_version`, `chapter`, `block`, `description`) VALUES
+('51.23', '腹腔镜下胆囊切除术', 'ICD-9-CM-3', '5', '51', '腹腔镜下胆囊切除术'),
+('47.01', '腹腔镜下阑尾切除术', 'ICD-9-CM-3', '4', '47', '腹腔镜下阑尾切除术'),
+('74.1', '子宫下段剖宫产术', 'ICD-9-CM-3', '7', '74', '经腹子宫下段剖宫产术'),
+('53.05', '腹股沟疝无张力修补术', 'ICD-9-CM-3', '5', '53', '腹股沟疝无张力修补术'),
+('06.39', '甲状腺次全切除术', 'ICD-9-CM-3', '0', '06', '甲状腺次全切除术'),
+('81.51', '全髋关节置换术', 'ICD-9-CM-3', '8', '81', '全髋关节置换术'),
+('81.54', '全膝关节置换术', 'ICD-9-CM-3', '8', '81', '全膝关节置换术'),
+('13.11', '白内障超声乳化抽吸术', 'ICD-9-CM-3', '1', '13', '白内障超声乳化抽吸术伴人工晶体植入'),
+('12.41', '小梁切除术', 'ICD-9-CM-3', '1', '12', '青光眼小梁切除术');
+
+-- 初始化ICD-10诊断编码
+INSERT INTO `medical_term_icd` (`icd_code`, `icd_name`, `icd_version`, `chapter`, `block`, `description`) VALUES
+('K80.0', '胆囊结石伴急性胆囊炎', 'ICD-10', 'XI', 'K80-K87', '胆囊结石伴有急性胆囊炎'),
+('K80.1', '胆囊结石伴慢性胆囊炎', 'ICD-10', 'XI', 'K80-K87', '胆囊结石伴有慢性胆囊炎'),
+('K35.8', '急性阑尾炎', 'ICD-10', 'XI', 'K35-K38', '急性阑尾炎，未特指'),
+('K36', '慢性阑尾炎', 'ICD-10', 'XI', 'K35-K38', '慢性阑尾炎'),
+('K40.9', '腹股沟疝，单侧，未提及梗阻或坏疽', 'ICD-10', 'XI', 'K40-K46', '单侧腹股沟疝，无梗阻或坏疽'),
+('E04.1', '结节性甲状腺肿', 'ICD-10', 'IV', 'E00-E07', '非毒性结节性甲状腺肿'),
+('E11.9', '2型糖尿病，不伴有并发症', 'ICD-10', 'IV', 'E10-E14', '2型糖尿病，不伴有并发症'),
+('I10', '原发性高血压', 'ICD-10', 'IX', 'I10-I15', '原发性(特发性)高血压'),
+('M16.9', '髋关节病，未特指', 'ICD-10', 'XIII', 'M16-M19', '髋关节病，未特指'),
+('M17.9', '膝关节病，未特指', 'ICD-10', 'XIII', 'M16-M19', '膝关节病，未特指'),
+('H25.9', '老年性白内障，未特指', 'ICD-10', 'VII', 'H25-H28', '老年性白内障，未特指'),
+('H40.9', '青光眼，未特指', 'ICD-10', 'VII', 'H40-H42', '青光眼，未特指');
+
+-- 初始化标准手术术语
+INSERT INTO `medical_term` (`term_code`, `standard_name`, `category_id`, `term_type`, `icd_id`, `icd_code`, `icd_name`, `icd_version`, `definition`, `review_status`, `enabled`, `created_user_name`)
+SELECT 'ST-00001', '腹腔镜胆囊切除术', c.id, 'SURGERY', i.id, i.icd_code, i.icd_name, i.icd_version, '在腹腔镜下切除胆囊的手术', 'APPROVED', 1, '系统管理员'
+FROM medical_term_category c, medical_term_icd i
+WHERE c.category_code = 'SURGERY-GENERAL' AND i.icd_code = '51.23' AND i.icd_version = 'ICD-9-CM-3';
+
+INSERT INTO `medical_term` (`term_code`, `standard_name`, `category_id`, `term_type`, `icd_id`, `icd_code`, `icd_name`, `icd_version`, `definition`, `review_status`, `enabled`, `created_user_name`)
+SELECT 'ST-00002', '腹腔镜阑尾切除术', c.id, 'SURGERY', i.id, i.icd_code, i.icd_name, i.icd_version, '在腹腔镜下切除阑尾的手术', 'APPROVED', 1, '系统管理员'
+FROM medical_term_category c, medical_term_icd i
+WHERE c.category_code = 'SURGERY-GENERAL' AND i.icd_code = '47.01' AND i.icd_version = 'ICD-9-CM-3';
+
+INSERT INTO `medical_term` (`term_code`, `standard_name`, `category_id`, `term_type`, `icd_id`, `icd_code`, `icd_name`, `icd_version`, `definition`, `review_status`, `enabled`, `created_user_name`)
+SELECT 'ST-00003', '子宫下段剖宫产术', c.id, 'SURGERY', i.id, i.icd_code, i.icd_name, i.icd_version, '经腹子宫下段剖宫产术', 'APPROVED', 1, '系统管理员'
+FROM medical_term_category c, medical_term_icd i
+WHERE c.category_code = 'SURGERY-OBGYN' AND i.icd_code = '74.1' AND i.icd_version = 'ICD-9-CM-3';
+
+INSERT INTO `medical_term` (`term_code`, `standard_name`, `category_id`, `term_type`, `icd_id`, `icd_code`, `icd_name`, `icd_version`, `definition`, `review_status`, `enabled`, `created_user_name`)
+SELECT 'ST-00004', '腹股沟疝无张力修补术', c.id, 'SURGERY', i.id, i.icd_code, i.icd_name, i.icd_version, '使用补片的腹股沟疝无张力修补术', 'APPROVED', 1, '系统管理员'
+FROM medical_term_category c, medical_term_icd i
+WHERE c.category_code = 'SURGERY-GENERAL' AND i.icd_code = '53.05' AND i.icd_version = 'ICD-9-CM-3';
+
+INSERT INTO `medical_term` (`term_code`, `standard_name`, `category_id`, `term_type`, `icd_id`, `icd_code`, `icd_name`, `icd_version`, `definition`, `review_status`, `enabled`, `created_user_name`)
+SELECT 'ST-00005', '甲状腺次全切除术', c.id, 'SURGERY', i.id, i.icd_code, i.icd_name, i.icd_version, '甲状腺部分切除术', 'APPROVED', 1, '系统管理员'
+FROM medical_term_category c, medical_term_icd i
+WHERE c.category_code = 'SURGERY-GENERAL' AND i.icd_code = '06.39' AND i.icd_version = 'ICD-9-CM-3';
+
+INSERT INTO `medical_term` (`term_code`, `standard_name`, `category_id`, `term_type`, `icd_id`, `icd_code`, `icd_name`, `icd_version`, `definition`, `review_status`, `enabled`, `created_user_name`)
+SELECT 'ST-00006', '全髋关节置换术', c.id, 'SURGERY', i.id, i.icd_code, i.icd_name, i.icd_version, '全髋关节置换手术', 'APPROVED', 1, '系统管理员'
+FROM medical_term_category c, medical_term_icd i
+WHERE c.category_code = 'SURGERY-ORTHOPEDIC' AND i.icd_code = '81.51' AND i.icd_version = 'ICD-9-CM-3';
+
+-- 初始化同义词(腹腔镜胆囊切除术)
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, '胆囊摘除', 'SYNONYM', 0.95, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-00001';
+
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, '胆囊切除', 'SYNONYM', 0.98, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-00001';
+
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, '腹腔镜胆囊切除术', 'SYNONYM', 1.00, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-00001';
+
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, 'LC术', 'ABBREVIATION', 0.90, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-00001';
+
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, '腹腔镜胆囊摘除术', 'SYNONYM', 0.95, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-00001';
+
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, '微创胆囊切除', 'SYNONYM', 0.90, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-00001';
+
+-- 初始化同义词(腹腔镜阑尾切除术)
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, '阑尾摘除', 'SYNONYM', 0.95, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-00002';
+
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, '阑尾切除', 'SYNONYM', 0.98, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-00002';
+
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, '腹腔镜阑尾切除术', 'SYNONYM', 1.00, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-00002';
+
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, 'LA术', 'ABBREVIATION', 0.90, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-00002';
+
+-- 初始化同义词(剖宫产术)
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, '剖腹产', 'SYNONYM', 0.98, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-00003';
+
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, '剖宫产', 'SYNONYM', 0.99, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-00003';
+
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, '子宫下段剖宫产', 'SYNONYM', 1.00, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-00003';
+
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, 'CS', 'ABBREVIATION', 0.85, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-00003';
+
+-- 初始化麻醉术语
+INSERT INTO `medical_term` (`term_code`, `standard_name`, `category_id`, `term_type`, `definition`, `review_status`, `enabled`, `created_user_name`)
+SELECT 'ST-AN-001', '全身麻醉', c.id, 'ANESTHESIA', '全身麻醉，简称全麻', 'APPROVED', 1, '系统管理员'
+FROM medical_term_category c WHERE c.category_code = 'ANESTHESIA';
+
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, '全麻', 'ABBREVIATION', 0.98, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-AN-001';
+
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, '全身麻醉', 'SYNONYM', 1.00, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-AN-001';
+
+INSERT INTO `medical_term` (`term_code`, `standard_name`, `category_id`, `term_type`, `definition`, `review_status`, `enabled`, `created_user_name`)
+SELECT 'ST-AN-002', '椎管内麻醉', c.id, 'ANESTHESIA', '椎管内麻醉，包括腰麻、硬膜外麻醉', 'APPROVED', 1, '系统管理员'
+FROM medical_term_category c WHERE c.category_code = 'ANESTHESIA';
+
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, '腰麻', 'SYNONYM', 0.95, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-AN-002';
+
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, '硬膜外麻醉', 'SYNONYM', 0.95, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-AN-002';
+
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, '腰硬联合麻醉', 'SYNONYM', 0.90, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-AN-002';
+
+INSERT INTO `medical_term` (`term_code`, `standard_name`, `category_id`, `term_type`, `definition`, `review_status`, `enabled`, `created_user_name`)
+SELECT 'ST-AN-003', '神经阻滞麻醉', c.id, 'ANESTHESIA', '神经阻滞麻醉', 'APPROVED', 1, '系统管理员'
+FROM medical_term_category c WHERE c.category_code = 'ANESTHESIA';
+
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, '局麻', 'ABBREVIATION', 0.90, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-AN-003';
+
+INSERT INTO `medical_term_alias` (`term_id`, `alias_name`, `alias_type`, `similarity_score`, `source`, `review_status`, `enabled`, `created_user_name`)
+SELECT t.id, '局部麻醉', 'SYNONYM', 0.98, 'MANUAL', 'APPROVED', 1, '系统管理员'
+FROM medical_term t WHERE t.term_code = 'ST-AN-003';

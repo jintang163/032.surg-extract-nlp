@@ -11,6 +11,7 @@ import {
   MedicineBoxOutlined,
   FileMarkdownOutlined,
   AudioOutlined,
+  ApiOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
@@ -49,6 +50,12 @@ const MainLayout: React.FC = () => {
             label: '手术模板管理',
             onClick: () => navigate('/templates'),
           },
+          {
+            key: '/terms',
+            icon: <ApiOutlined />,
+            label: '术语映射管理',
+            onClick: () => navigate('/terms'),
+          },
         ]
       : []),
   ]
@@ -59,6 +66,7 @@ const MainLayout: React.FC = () => {
     if (path.startsWith('/homepage')) return '/records'
     if (path.startsWith('/templates')) return '/templates'
     if (path.startsWith('/voice')) return '/voice'
+    if (path.startsWith('/terms')) return '/terms'
     return path
   }
 

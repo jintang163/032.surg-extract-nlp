@@ -271,3 +271,96 @@ export const voiceApi = {
   addPunctuation: (text: string) =>
     http.post<string>('/voice/add-punctuation', { text }),
 }
+
+export const termApi = {
+  getTermTypes: () => http.get<any[]>('/terms/types'),
+
+  getAliasTypes: () => http.get<any[]>('/terms/alias-types'),
+
+  getCategories: () => http.get<any[]>('/terms/categories'),
+
+  list: (params: {
+    keyword?: string
+    termType?: string
+    categoryId?: number
+    reviewStatus?: string
+    pageNum: number
+    pageSize: number
+  }) => http.get<any>('/terms', { params }),
+
+  detail: (id: number) => http.get<any>(`/terms/${id}`),
+
+  create: (data: {
+    termCode: string
+    standardName: string
+    termType: string
+    categoryId?: number
+    icdCode?: string
+    icdName?: string
+    definition?: string
+    confidence?: number
+    enabled?: number
+  }) => http.post<any>('/terms', data),
+
+  update: (id: number, data: any) => http.put<any>(`/terms/${id}`, data),
+
+  delete: (id: number) => http.delete<void>(`/terms/${id}`),
+
+  review: (id: number, approved: boolean, remark?: string) =>
+    http.post<void>(`/terms/${id}/review`, null, { params: { approved, remark } }),
+
+  toggleEnabled: (id: number) => http.post<void>(`/terms/${id}/toggle`),
+
+  merge: (data: {
+    targetTermId: number
+    sourceTermIds: number[]
+    mergeAction: string
+    remark?: string
+  }) => http.post<void>('/terms/merge', data),
+
+  batchImport: (data: {
+    items: any[]
+    categoryId?: number
+    termType?: string
+    skipDuplicate?: boolean
+  }) => http.post<any>('/terms/batch-import', data),
+
+  addAlias: (data: {
+    termId: number
+    aliasName: string
+    aliasType: string
+    similarityScore?: number
+    source?: string
+    enabled?: number
+  }) => http.post<any>('/terms/aliases', data),
+
+  updateAlias: (id: number, data: any) => http.put<any>(`/terms/aliases/${id}`, data),
+
+  deleteAlias: (id: number) => http.delete<void>(`/terms/aliases/${id}`),
+
+  reviewAlias: (id: number, approved: boolean, remark?: string) =>
+    http.post<void>(`/terms/aliases/${id}/review`, null, { params: { approved, remark } }),
+
+  getAliases: (termId: number) => http.get<any[]>(`/terms/${termId}/aliases`),
+
+  mapTerm: (originalText: string, termType?: string, maxCandidates?: number) =>
+    http.post<any>('/terms/map', null, { params: { originalText, termType, maxCandidates } }),
+
+  searchInGraph: (keyword: string) => http.get<any[]>(`/terms/graph/search`, { params: { keyword } }),
+
+  findSynonymsInGraph: (name: string, maxHops?: number) =>
+    http.get<any[]>(`/terms/graph/synonyms`, { params: { name, maxHops } }),
+
+  findPathInGraph: (startName: string, endName: string) =>
+    http.get<any[]>(`/terms/graph/path`, { params: { startName, endName } }),
+
+  getGraphStats: () => http.get<any>('/terms/graph/stats'),
+
+  syncAllToGraph: () => http.post<void>('/terms/graph/sync-all'),
+
+  clearGraph: () => http.post<void>('/terms/graph/clear'),
+
+  getMappingStats: (days?: number) => http.get<any>('/terms/stats/mapping', { params: { days } }),
+
+  getTopTerms: (limit?: number) => http.get<any[]>('/terms/stats/top', { params: { limit } }),
+}

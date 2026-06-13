@@ -46,6 +46,7 @@ public class SurgeryRecordService {
     private final FileStorageService fileStorageService;
     private final NlpServiceClient nlpServiceClient;
     private final ObjectMapper objectMapper;
+    private final TermMappingService termMappingService;
 
     @Transactional(rollbackFor = Exception.class)
     public RecordQueryDTO uploadRecord(MultipartFile file, RecordUploadDTO uploadDTO) {
@@ -673,11 +674,17 @@ public class SurgeryRecordService {
             case "gender" -> home.setGender(value);
             case "age" -> home.setAge(parseInteger(value));
             case "surgery_date" -> home.setSurgeryDate(parseDateTime(value));
-            case "surgery_name" -> home.setSurgeryName(value);
+            case "surgery_name" -> {
+                String normalized = normalizeTerm(value, "SURGERY");
+                home.setSurgeryName(normalized);
+            }
             case "surgery_level" -> home.setSurgeryLevel(value);
             case "incision_level" -> home.setIncisionLevel(value);
             case "incision_healing" -> home.setIncisionHealing(value);
-            case "anesthesia_type" -> home.setAnesthesiaType(value);
+            case "anesthesia_type" -> {
+                String normalized = normalizeTerm(value, "ANESTHESIA");
+                home.setAnesthesiaType(normalized);
+            }
             case "blood_loss" -> home.setBloodLoss(parseDecimal(value));
             case "blood_transfusion" -> home.setBloodTransfusion(parseDecimal(value));
             case "fluid_infusion" -> home.setFluidInfusion(parseDecimal(value));
@@ -690,6 +697,24 @@ public class SurgeryRecordService {
             case "department" -> home.setDepartment(value);
             default -> log.debug("未处理的字段映射: {}", field);
         }
+    }
+
+    private String normalizeTerm(String originalText, String termType) {
+        if (originalText == null || originalText.trim().isEmpty()) {
+            return originalText;
+        }
+        try {
+            TermMappingResultDTO result = termMappingService.mapTerm(originalText, termType);
+            if (result != null && result.getMatched()) {
+                log.info("术语映射成功: {} -> {} (类型: {}, 匹配方式: {}, 相似度: {})",
+                        originalText, result.getStandardName(), termType,
+                        result.getMatchMethod(), result.getConfidence());
+                return result.getStandardName();
+            }
+        } catch (Exception e) {
+            log.warn("术语映射失败: text={}, type={}, error={}", originalText, termType, e.getMessage());
+        }
+        return originalText;
     }
 
     private Integer parseInteger(String value) {

@@ -9,6 +9,7 @@ import HomePageFill from '@/pages/HomePageFill'
 import SurgeryTemplateList from '@/pages/SurgeryTemplateList'
 import SurgeryTemplateEditor from '@/pages/SurgeryTemplateEditor'
 import VoiceRecordingPage from '@/pages/VoiceRecordingPage'
+import MedicalTermManagement from '@/pages/MedicalTermManagement'
 import ProtectedRoute from '@/components/ProtectedRoute'
 
 const App: React.FC = () => {
@@ -33,6 +34,7 @@ const App: React.FC = () => {
         <Route path="templates/:id/edit" element={<SurgeryTemplateEditor />} />
         <Route path="voice" element={<VoiceRecordingPage />} />
         <Route path="voice/:recordId" element={<VoiceRecordingPage />} />
+        <Route path="terms" element={<MedicalTermManagement />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

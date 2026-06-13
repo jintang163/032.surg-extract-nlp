@@ -68,6 +68,122 @@ export const FileTypeMap: Record<FileType, { label: string; icon: string }> = {
   UNKNOWN: { label: '未知', icon: 'FileOutlined' },
 }
 
+export type TermType = 'SURGERY' | 'DIAGNOSIS' | 'ANESTHESIA' | 'INSTRUMENT' | 'DRUG' | 'OTHER'
+
+export const TermTypeMap: Record<TermType, { label: string; color: string }> = {
+  SURGERY: { label: '手术名称', color: 'blue' },
+  DIAGNOSIS: { label: '诊断', color: 'green' },
+  ANESTHESIA: { label: '麻醉', color: 'purple' },
+  INSTRUMENT: { label: '器械', color: 'cyan' },
+  DRUG: { label: '药品', color: 'orange' },
+  OTHER: { label: '其他', color: 'default' },
+}
+
+export type AliasType = 'SYNONYM' | 'ABBREVIATION' | 'MISTAKE' | 'TRANSLATION' | 'REGIONAL' | 'MERGED'
+
+export const AliasTypeMap: Record<AliasType, { label: string; color: string }> = {
+  SYNONYM: { label: '同义词', color: 'blue' },
+  ABBREVIATION: { label: '缩写', color: 'green' },
+  MISTAKE: { label: '常见误写', color: 'red' },
+  TRANSLATION: { label: '译名', color: 'purple' },
+  REGIONAL: { label: '地域说法', color: 'cyan' },
+  MERGED: { label: '合并来源', color: 'orange' },
+}
+
+export type ReviewStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
+
+export const ReviewStatusMap: Record<ReviewStatus, { label: string; color: string }> = {
+  PENDING: { label: '待审核', color: 'warning' },
+  APPROVED: { label: '已通过', color: 'success' },
+  REJECTED: { label: '已拒绝', color: 'error' },
+}
+
+export interface MedicalTerm {
+  id: number
+  termCode: string
+  standardName: string
+  termType: TermType
+  categoryId?: number
+  categoryName?: string
+  pinyin?: string
+  pinyinAbbr?: string
+  icdCode?: string
+  icdName?: string
+  definition?: string
+  confidence: number
+  matchCount: number
+  usageCount: number
+  reviewStatus: ReviewStatus
+  reviewRemark?: string
+  reviewedBy?: number
+  reviewedTime?: string
+  enabled: number
+  createdTime: string
+  updatedTime: string
+  aliases?: MedicalTermAlias[]
+}
+
+export interface MedicalTermAlias {
+  id: number
+  termId: number
+  aliasName: string
+  aliasType: AliasType
+  pinyin?: string
+  pinyinAbbr?: string
+  similarityScore?: number
+  source?: string
+  reviewStatus: ReviewStatus
+  reviewedBy?: number
+  reviewedTime?: string
+  enabled: number
+  createdTime: string
+}
+
+export interface TermMappingResult {
+  matched: boolean
+  originalText: string
+  termId?: number
+  termCode?: string
+  standardName?: string
+  termType?: TermType
+  icdCode?: string
+  icdName?: string
+  matchMethod?: string
+  confidence?: number
+  candidates?: TermMappingCandidate[]
+}
+
+export interface TermMappingCandidate {
+  termId: number
+  termCode: string
+  standardName: string
+  aliasName?: string
+  matchMethod: string
+  confidence: number
+}
+
+export interface TermGraphStats {
+  totalNodes: number
+  totalRelationships: number
+  termTypeStats: Record<string, number>
+  topMatchedTerms: MedicalTerm[]
+}
+
+export interface TermGraphNode {
+  id: string
+  termId: number
+  termCode: string
+  name: string
+  standardName: string
+  termType: TermType
+  pinyin?: string
+  pinyinAbbr?: string
+  icdCode?: string
+  icdName?: string
+  isStandard?: boolean
+  enabled?: boolean
+}
+
 export interface SurgeryRecord {
   id: number
   recordNo: string

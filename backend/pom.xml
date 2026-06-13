@@ -25,6 +25,7 @@
         <knife4j.version>4.4.0</knife4j.version>
         <poi.version>5.2.5</poi.version>
         <pdfbox.version>3.0.1</pdfbox.version>
+        <neo4j.version>2023.0.0</neo4j.version>
     </properties>
 
     <dependencies>
@@ -108,6 +109,28 @@
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>
             <version>${pdfbox.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-neo4j</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.neo4j.driver</groupId>
+            <artifactId>neo4j-java-driver</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-text</artifactId>
+            <version>1.11.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.github.houbb</groupId>
+            <artifactId>pinyin</artifactId>
+            <version>0.4.0</version>
         </dependency>
 
         <dependency>
