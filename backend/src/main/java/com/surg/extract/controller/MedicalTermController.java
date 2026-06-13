@@ -44,8 +44,20 @@ public class MedicalTermController {
     }
 
     @Operation(summary = "分页查询术语", description = "分页查询标准术语列表")
-    @GetMapping("/page")
+    @GetMapping
     public Result<Page<MedicalTerm>> getTermPage(
+            @Parameter(description = "页码") @RequestParam(defaultValue = "1") Integer pageNum,
+            @Parameter(description = "每页大小") @RequestParam(defaultValue = "10") Integer pageSize,
+            @Parameter(description = "关键词") @RequestParam(required = false) String keyword,
+            @Parameter(description = "术语类型") @RequestParam(required = false) String termType,
+            @Parameter(description = "分类ID") @RequestParam(required = false) Long categoryId,
+            @Parameter(description = "审核状态") @RequestParam(required = false) String reviewStatus) {
+        return Result.success(termService.getTermPage(pageNum, pageSize, keyword, termType, categoryId, reviewStatus));
+    }
+
+    @Operation(summary = "分页查询术语（兼容）", description = "分页查询标准术语列表")
+    @GetMapping("/page")
+    public Result<Page<MedicalTerm>> getTermPageCompat(
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") Integer pageNum,
             @Parameter(description = "每页大小") @RequestParam(defaultValue = "10") Integer pageSize,
             @Parameter(description = "关键词") @RequestParam(required = false) String keyword,
@@ -140,10 +152,24 @@ public class MedicalTermController {
         return Result.success(approved ? "审核通过" : "已拒绝");
     }
 
-    @Operation(summary = "术语映射", description = "将非标准术语映射到标准术语")
+    @Operation(summary = "术语映射", description = "将非标准术语映射到标准术语，支持query参数或body传参")
     @PostMapping("/map")
-    public Result<TermMappingResultDTO> mapTerm(@RequestBody @Validated TermMappingRequestDTO dto) {
-        return Result.success(mappingService.mapTerm(dto));
+    public Result<TermMappingResultDTO> mapTerm(
+            @Parameter(description = "原始文本") @RequestParam(required = false) String originalText,
+            @Parameter(description = "术语类型") @RequestParam(required = false) String termType,
+            @Parameter(description = "最大候选数") @RequestParam(required = false) Integer maxCandidates,
+            @RequestBody(required = false) TermMappingRequestDTO dto) {
+        TermMappingRequestDTO request = dto != null ? dto : new TermMappingRequestDTO();
+        if (originalText != null) {
+            request.setText(originalText);
+        }
+        if (termType != null) {
+            request.setTermType(termType);
+        }
+        if (maxCandidates != null) {
+            request.setMaxResults(maxCandidates);
+        }
+        return Result.success(mappingService.mapTerm(request));
     }
 
     @Operation(summary = "批量术语映射", description = "批量映射多个术语")
@@ -247,5 +273,27 @@ public class MedicalTermController {
     @GetMapping("/alias-types")
     public Result<List<Map<String, String>>> getAliasTypes() {
         return Result.success(aliasService.getAliasTypes());
+    }
+
+    @Operation(summary = "获取分类树", description = "获取术语分类树列表")
+    @GetMapping("/categories")
+    public Result<List<Map<String, Object>>> getCategories() {
+        return Result.success(termService.getCategoryTree());
+    }
+
+    @Operation(summary = "切换术语启用状态", description = "切换术语的启用/禁用状态")
+    @PostMapping("/{id}/toggle")
+    public Result<Void> toggleEnabled(@PathVariable Long id) {
+        termService.toggleEnabled(id);
+        return Result.success("状态已更新");
+    }
+
+    @Operation(summary = "更新术语", description = "更新标准术语信息")
+    @PutMapping("/{id}")
+    public Result<MedicalTerm> updateTermById(
+            @PathVariable Long id,
+            @RequestBody @Validated MedicalTermUpdateDTO dto) {
+        dto.setId(id);
+        return Result.success("更新成功", termService.updateTerm(dto));
     }
 }

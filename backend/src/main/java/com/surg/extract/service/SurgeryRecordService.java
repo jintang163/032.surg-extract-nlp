@@ -675,15 +675,34 @@ public class SurgeryRecordService {
             case "age" -> home.setAge(parseInteger(value));
             case "surgery_date" -> home.setSurgeryDate(parseDateTime(value));
             case "surgery_name" -> {
-                String normalized = normalizeTerm(value, "SURGERY");
-                home.setSurgeryName(normalized);
+                TermMappingResultDTO normalized = normalizeTerm(value, "SURGERY");
+                if (normalized != null) {
+                    home.setSurgeryName(normalized.getStandardTermName());
+                    if (normalized.getStandardTermCode() != null) {
+                        home.setSurgeryCode(normalized.getStandardTermCode());
+                    }
+                    if (normalized.getIcdCode() != null) {
+                        home.setDischargeDiagnosis(normalized.getIcdName() != null
+                                ? normalized.getIcdCode() + " " + normalized.getIcdName()
+                                : normalized.getIcdCode());
+                    }
+                } else {
+                    home.setSurgeryName(value);
+                }
             }
             case "surgery_level" -> home.setSurgeryLevel(value);
             case "incision_level" -> home.setIncisionLevel(value);
             case "incision_healing" -> home.setIncisionHealing(value);
             case "anesthesia_type" -> {
-                String normalized = normalizeTerm(value, "ANESTHESIA");
-                home.setAnesthesiaType(normalized);
+                TermMappingResultDTO normalized = normalizeTerm(value, "ANESTHESIA");
+                if (normalized != null) {
+                    home.setAnesthesiaType(normalized.getStandardTermName());
+                    if (normalized.getStandardTermCode() != null) {
+                        home.setAnesthesiaCode(normalized.getStandardTermCode());
+                    }
+                } else {
+                    home.setAnesthesiaType(value);
+                }
             }
             case "blood_loss" -> home.setBloodLoss(parseDecimal(value));
             case "blood_transfusion" -> home.setBloodTransfusion(parseDecimal(value));
@@ -699,22 +718,22 @@ public class SurgeryRecordService {
         }
     }
 
-    private String normalizeTerm(String originalText, String termType) {
+    private TermMappingResultDTO normalizeTerm(String originalText, String termType) {
         if (originalText == null || originalText.trim().isEmpty()) {
-            return originalText;
+            return null;
         }
         try {
             TermMappingResultDTO result = termMappingService.mapTerm(originalText, termType);
-            if (result != null && result.getMatched()) {
+            if (result != null && Boolean.TRUE.equals(result.getMappingSuccess())) {
                 log.info("术语映射成功: {} -> {} (类型: {}, 匹配方式: {}, 相似度: {})",
-                        originalText, result.getStandardName(), termType,
-                        result.getMatchMethod(), result.getConfidence());
-                return result.getStandardName();
+                        originalText, result.getStandardTermName(), termType,
+                        result.getMatchMethod(), result.getSimilarityScore());
+                return result;
             }
         } catch (Exception e) {
             log.warn("术语映射失败: text={}, type={}, error={}", originalText, termType, e.getMessage());
         }
-        return originalText;
+        return null;
     }
 
     private Integer parseInteger(String value) {

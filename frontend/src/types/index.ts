@@ -140,26 +140,27 @@ export interface MedicalTermAlias {
 }
 
 export interface TermMappingResult {
-  matched: boolean
-  originalText: string
-  termId?: number
-  termCode?: string
-  standardName?: string
+  mappingSuccess: boolean
+  sourceText: string
+  standardTermId?: number
+  standardTermCode?: string
+  standardTermName?: string
   termType?: TermType
   icdCode?: string
   icdName?: string
   matchMethod?: string
-  confidence?: number
+  similarityScore?: number
   candidates?: TermMappingCandidate[]
 }
 
 export interface TermMappingCandidate {
   termId: number
   termCode: string
-  standardName: string
-  aliasName?: string
+  termName: string
+  matchedText?: string
   matchMethod: string
-  confidence: number
+  similarityScore: number
+  rank?: number
 }
 
 export interface TermGraphStats {

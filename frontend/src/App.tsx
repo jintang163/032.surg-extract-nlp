@@ -34,7 +34,7 @@ const App: React.FC = () => {
         <Route path="templates/:id/edit" element={<SurgeryTemplateEditor />} />
         <Route path="voice" element={<VoiceRecordingPage />} />
         <Route path="voice/:recordId" element={<VoiceRecordingPage />} />
-        <Route path="terms" element={<MedicalTermManagement />} />
+        <Route path="medical-term" element={<MedicalTermManagement />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

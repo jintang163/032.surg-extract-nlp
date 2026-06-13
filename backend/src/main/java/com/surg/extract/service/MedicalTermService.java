@@ -12,7 +12,9 @@ import com.surg.extract.common.UserContext;
 import com.surg.extract.dto.*;
 import com.surg.extract.entity.MedicalTerm;
 import com.surg.extract.entity.MedicalTermAlias;
+import com.surg.extract.entity.MedicalTermCategory;
 import com.surg.extract.mapper.MedicalTermAliasMapper;
+import com.surg.extract.mapper.MedicalTermCategoryMapper;
 import com.surg.extract.mapper.MedicalTermMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +34,7 @@ public class MedicalTermService {
 
     private final MedicalTermMapper termMapper;
     private final MedicalTermAliasMapper aliasMapper;
+    private final MedicalTermCategoryMapper categoryMapper;
     private final MedicalTermGraphService graphService;
     private final MedicalTermAliasService aliasService;
     private final ObjectMapper objectMapper;
@@ -387,5 +390,54 @@ public class MedicalTermService {
         types.add(Map.of("code", "DRUG", "name", "药品"));
         types.add(Map.of("code", "OTHER", "name", "其他"));
         return types;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void toggleEnabled(Long id) {
+        MedicalTerm term = termMapper.selectById(id);
+        if (term == null || term.getDeleted() == 1) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "术语不存在");
+        }
+        term.setEnabled(term.getEnabled() == 1 ? 0 : 1);
+        term.setUpdatedTime(LocalDateTime.now());
+        termMapper.updateById(term);
+
+        try {
+            graphService.syncTermToGraph(term);
+        } catch (Exception e) {
+            log.warn("同步图谱失败: termId={}, error={}", id, e.getMessage());
+        }
+
+        log.info("切换术语状态: termId={}, enabled={}", id, term.getEnabled());
+    }
+
+    public List<Map<String, Object>> getCategoryTree() {
+        List<MedicalTermCategory> categories = categoryMapper.selectList(
+                new LambdaQueryWrapper<MedicalTermCategory>()
+                        .eq(MedicalTermCategory::getDeleted, 0)
+                        .orderByAsc(MedicalTermCategory::getSortOrder));
+        return buildCategoryTree(categories, null);
+    }
+
+    private List<Map<String, Object>> buildCategoryTree(List<MedicalTermCategory> categories, Long parentId) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (MedicalTermCategory category : categories) {
+            if ((parentId == null && category.getParentId() == null)
+                    || (parentId != null && parentId.equals(category.getParentId()))) {
+                Map<String, Object> node = new LinkedHashMap<>();
+                node.put("id", category.getId());
+                node.put("categoryName", category.getCategoryName());
+                node.put("categoryCode", category.getCategoryCode());
+                node.put("parentId", category.getParentId());
+                node.put("description", category.getDescription());
+                node.put("sortOrder", category.getSortOrder());
+                List<Map<String, Object>> children = buildCategoryTree(categories, category.getId());
+                if (!children.isEmpty()) {
+                    node.put("children", children);
+                }
+                result.add(node);
+            }
+        }
+        return result;
     }
 }

@@ -51,10 +51,10 @@ const MainLayout: React.FC = () => {
             onClick: () => navigate('/templates'),
           },
           {
-            key: '/terms',
+            key: '/medical-term',
             icon: <ApiOutlined />,
             label: '术语映射管理',
-            onClick: () => navigate('/terms'),
+            onClick: () => navigate('/medical-term'),
           },
         ]
       : []),
@@ -66,7 +66,7 @@ const MainLayout: React.FC = () => {
     if (path.startsWith('/homepage')) return '/records'
     if (path.startsWith('/templates')) return '/templates'
     if (path.startsWith('/voice')) return '/voice'
-    if (path.startsWith('/terms')) return '/terms'
+    if (path.startsWith('/medical-term')) return '/medical-term'
     return path
   }
 

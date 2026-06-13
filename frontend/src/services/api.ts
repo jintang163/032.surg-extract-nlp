@@ -273,11 +273,11 @@ export const voiceApi = {
 }
 
 export const termApi = {
-  getTermTypes: () => http.get<any[]>('/terms/types'),
+  getTermTypes: () => http.get<any[]>('/medical-term/types'),
 
-  getAliasTypes: () => http.get<any[]>('/terms/alias-types'),
+  getAliasTypes: () => http.get<any[]>('/medical-term/alias-types'),
 
-  getCategories: () => http.get<any[]>('/terms/categories'),
+  getCategories: () => http.get<any[]>('/medical-term/categories'),
 
   list: (params: {
     keyword?: string
@@ -286,9 +286,9 @@ export const termApi = {
     reviewStatus?: string
     pageNum: number
     pageSize: number
-  }) => http.get<any>('/terms', { params }),
+  }) => http.get<any>('/medical-term', { params }),
 
-  detail: (id: number) => http.get<any>(`/terms/${id}`),
+  detail: (id: number) => http.get<any>(`/medical-term/${id}`),
 
   create: (data: {
     termCode: string
@@ -300,30 +300,30 @@ export const termApi = {
     definition?: string
     confidence?: number
     enabled?: number
-  }) => http.post<any>('/terms', data),
+  }) => http.post<any>('/medical-term', data),
 
-  update: (id: number, data: any) => http.put<any>(`/terms/${id}`, data),
+  update: (id: number, data: any) => http.put<any>(`/medical-term/${id}`, data),
 
-  delete: (id: number) => http.delete<void>(`/terms/${id}`),
+  delete: (id: number) => http.delete<void>(`/medical-term/${id}`),
 
   review: (id: number, approved: boolean, remark?: string) =>
-    http.post<void>(`/terms/${id}/review`, null, { params: { approved, remark } }),
+    http.post<void>(`/medical-term/${id}/review`, null, { params: { approved, remark } }),
 
-  toggleEnabled: (id: number) => http.post<void>(`/terms/${id}/toggle`),
+  toggleEnabled: (id: number) => http.post<void>(`/medical-term/${id}/toggle`),
 
   merge: (data: {
     targetTermId: number
     sourceTermIds: number[]
     mergeAction: string
     remark?: string
-  }) => http.post<void>('/terms/merge', data),
+  }) => http.post<void>('/medical-term/merge', data),
 
   batchImport: (data: {
     items: any[]
     categoryId?: number
     termType?: string
     skipDuplicate?: boolean
-  }) => http.post<any>('/terms/batch-import', data),
+  }) => http.post<any>('/medical-term/batch-import', data),
 
   addAlias: (data: {
     termId: number
@@ -332,35 +332,52 @@ export const termApi = {
     similarityScore?: number
     source?: string
     enabled?: number
-  }) => http.post<any>('/terms/aliases', data),
+  }) => http.post<any>('/medical-term/alias', data),
 
-  updateAlias: (id: number, data: any) => http.put<any>(`/terms/aliases/${id}`, data),
+  updateAlias: (id: number, data: any) => http.put<any>(`/medical-term/alias`, data),
 
-  deleteAlias: (id: number) => http.delete<void>(`/terms/aliases/${id}`),
+  deleteAlias: (id: number) => http.delete<void>(`/medical-term/alias/${id}`),
 
   reviewAlias: (id: number, approved: boolean, remark?: string) =>
-    http.post<void>(`/terms/aliases/${id}/review`, null, { params: { approved, remark } }),
+    http.post<void>(`/medical-term/alias/${id}/review`, null, { params: { approved, remark } }),
 
-  getAliases: (termId: number) => http.get<any[]>(`/terms/${termId}/aliases`),
+  getAliases: (termId: number) => http.get<any[]>(`/medical-term/${termId}/aliases`),
 
   mapTerm: (originalText: string, termType?: string, maxCandidates?: number) =>
-    http.post<any>('/terms/map', null, { params: { originalText, termType, maxCandidates } }),
+    http.post<any>('/medical-term/map', null, { params: { originalText, termType, maxCandidates } }),
 
-  searchInGraph: (keyword: string) => http.get<any[]>(`/terms/graph/search`, { params: { keyword } }),
+  mapTermByBody: (data: {
+    text: string
+    termType?: string
+    maxResults?: number
+    minSimilarity?: number
+    useGraph?: boolean
+  }) => http.post<any>('/medical-term/map', data),
+
+  batchMapTerms: (data: any[]) =>
+    http.post<any[]>('/medical-term/map/batch', data),
+
+  searchInGraph: (keyword: string) => http.get<any[]>(`/medical-term/graph/search`, { params: { keyword } }),
 
   findSynonymsInGraph: (name: string, maxHops?: number) =>
-    http.get<any[]>(`/terms/graph/synonyms`, { params: { name, maxHops } }),
+    http.get<any[]>(`/medical-term/graph/synonyms`, { params: { name, maxHops } }),
 
   findPathInGraph: (startName: string, endName: string) =>
-    http.get<any[]>(`/terms/graph/path`, { params: { startName, endName } }),
+    http.get<any[]>(`/medical-term/graph/path`, { params: { startName, endName } }),
 
-  getGraphStats: () => http.get<any>('/terms/graph/stats'),
+  getGraphStats: () => http.get<any>('/medical-term/graph/stats'),
 
-  syncAllToGraph: () => http.post<void>('/terms/graph/sync-all'),
+  syncAllToGraph: () => http.post<void>('/medical-term/graph/sync'),
 
-  clearGraph: () => http.post<void>('/terms/graph/clear'),
+  clearGraph: () => http.delete<void>('/medical-term/graph/clear'),
 
-  getMappingStats: (days?: number) => http.get<any>('/terms/stats/mapping', { params: { days } }),
+  getMappingStats: (days?: number) => http.get<any>('/medical-term/mapping-stats', { params: { days } }),
 
-  getTopTerms: (limit?: number) => http.get<any[]>('/terms/stats/top', { params: { limit } }),
+  getTopTerms: (limit?: number) => http.get<any[]>('/medical-term/stats/top', { params: { limit } }),
+
+  getMappingLog: (params: {
+    pageNum?: number
+    pageSize?: number
+    recordId?: number
+  }) => http.get<any>('/medical-term/mapping-log', { params }),
 }

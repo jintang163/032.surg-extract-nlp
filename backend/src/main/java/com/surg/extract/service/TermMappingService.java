@@ -512,4 +512,47 @@ public class TermMappingService {
             log.warn("清除缓存失败: text={}, error={}", text, e.getMessage());
         }
     }
+
+    public TermMappingResultDTO mapTerm(String text) {
+        TermMappingRequestDTO dto = new TermMappingRequestDTO();
+        dto.setText(text);
+        return mapTerm(dto);
+    }
+
+    public TermMappingResultDTO mapTerm(String text, String termType) {
+        TermMappingRequestDTO dto = new TermMappingRequestDTO();
+        dto.setText(text);
+        dto.setTermType(termType);
+        return mapTerm(dto);
+    }
+
+    public TermMappingResultDTO mapTerm(String text, String termType, Integer maxResults) {
+        TermMappingRequestDTO dto = new TermMappingRequestDTO();
+        dto.setText(text);
+        dto.setTermType(termType);
+        dto.setMaxResults(maxResults);
+        return mapTerm(dto);
+    }
+
+    public TermMappingResultDTO mapSurgeryTerm(String text) {
+        return mapTerm(text, "SURGERY");
+    }
+
+    public TermMappingResultDTO mapAnesthesiaTerm(String text) {
+        return mapTerm(text, "ANESTHESIA");
+    }
+
+    public TermMappingResultDTO mapDiagnosisTerm(String text) {
+        return mapTerm(text, "DIAGNOSIS");
+    }
+
+    public List<TermMappingResultDTO> batchMapSurgeryTerms(List<String> texts) {
+        List<TermMappingRequestDTO> dtos = texts.stream().map(text -> {
+            TermMappingRequestDTO dto = new TermMappingRequestDTO();
+            dto.setText(text);
+            dto.setTermType("SURGERY");
+            return dto;
+        }).collect(Collectors.toList());
+        return batchMapTerms(dtos);
+    }
 }

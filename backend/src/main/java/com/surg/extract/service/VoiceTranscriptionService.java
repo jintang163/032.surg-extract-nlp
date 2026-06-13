@@ -47,6 +47,7 @@ public class VoiceTranscriptionService {
     private final ObjectMapper objectMapper;
     private final MedicalRecordHomeService homeService;
     private final DepartmentCustomFieldService customFieldService;
+    private final TermMappingService termMappingService;
 
     private final Map<String, VoiceSession> sessions = new ConcurrentHashMap<>();
 
@@ -474,11 +475,40 @@ public class VoiceTranscriptionService {
                     case "surgeryDate":
                         if (value instanceof LocalDateTime) home.setSurgeryDate((LocalDateTime) value);
                         break;
-                    case "surgeryName": home.setSurgeryName(String.valueOf(value)); break;
+                    case "surgeryName": {
+                        String originalText = String.valueOf(value);
+                        TermMappingResultDTO mapped = normalizeTerm(originalText, "SURGERY");
+                        if (mapped != null) {
+                            home.setSurgeryName(mapped.getStandardTermName());
+                            if (mapped.getStandardTermCode() != null) {
+                                home.setSurgeryCode(mapped.getStandardTermCode());
+                            }
+                            if (mapped.getIcdCode() != null && home.getDischargeDiagnosis() == null) {
+                                home.setDischargeDiagnosis(mapped.getIcdName() != null
+                                        ? mapped.getIcdCode() + " " + mapped.getIcdName()
+                                        : mapped.getIcdCode());
+                            }
+                        } else {
+                            home.setSurgeryName(originalText);
+                        }
+                        break;
+                    }
                     case "surgeryCode": home.setSurgeryCode(String.valueOf(value)); break;
                     case "incisionLevel": home.setIncisionLevel(String.valueOf(value)); break;
                     case "incisionHealing": home.setIncisionHealing(String.valueOf(value)); break;
-                    case "anesthesiaType": home.setAnesthesiaType(String.valueOf(value)); break;
+                    case "anesthesiaType": {
+                        String originalText = String.valueOf(value);
+                        TermMappingResultDTO mapped = normalizeTerm(originalText, "ANESTHESIA");
+                        if (mapped != null) {
+                            home.setAnesthesiaType(mapped.getStandardTermName());
+                            if (mapped.getStandardTermCode() != null) {
+                                home.setAnesthesiaCode(mapped.getStandardTermCode());
+                            }
+                        } else {
+                            home.setAnesthesiaType(originalText);
+                        }
+                        break;
+                    }
                     case "anesthesiaCode": home.setAnesthesiaCode(String.valueOf(value)); break;
                     case "bloodLoss": home.setBloodLoss(new java.math.BigDecimal(String.valueOf(value))); break;
                     case "bloodTransfusion": home.setBloodTransfusion(new java.math.BigDecimal(String.valueOf(value))); break;
@@ -498,6 +528,23 @@ public class VoiceTranscriptionService {
                 log.warn("应用首页字段失败: field={}, value={}", key, value);
             }
         }
+    }
+
+    private TermMappingResultDTO normalizeTerm(String originalText, String termType) {
+        if (originalText == null || originalText.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            TermMappingResultDTO result = termMappingService.mapTerm(originalText, termType);
+            if (result != null && Boolean.TRUE.equals(result.getMappingSuccess())) {
+                log.info("语音术语映射成功: {} -> {} (类型: {}, 匹配方式: {})",
+                        originalText, result.getStandardTermName(), termType, result.getMatchMethod());
+                return result;
+            }
+        } catch (Exception e) {
+            log.warn("语音术语映射失败: text={}, type={}, error={}", originalText, termType, e.getMessage());
+        }
+        return null;
     }
 
     private void saveCustomFields(Long recordId, String department, Map<String, Object> customFields) {

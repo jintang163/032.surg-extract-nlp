@@ -1035,7 +1035,7 @@ const MedicalTermManagement: React.FC = () => {
         {mappingResult && (
           <div>
             <Divider orientation="left">映射结果</Divider>
-            {mappingResult.matched ? (
+            {mappingResult.mappingSuccess ? (
               <Alert
                 type="success"
                 showIcon
@@ -1043,16 +1043,16 @@ const MedicalTermManagement: React.FC = () => {
                 description={
                   <div>
                     <Descriptions column={2} size="small">
-                      <Descriptions.Item label="原始文本">{mappingResult.originalText}</Descriptions.Item>
+                      <Descriptions.Item label="原始文本">{mappingResult.sourceText}</Descriptions.Item>
                       <Descriptions.Item label="标准名称">
-                        <strong>{mappingResult.standardName}</strong>
+                        <strong>{mappingResult.standardTermName}</strong>
                       </Descriptions.Item>
-                      <Descriptions.Item label="术语编码">{mappingResult.termCode}</Descriptions.Item>
+                      <Descriptions.Item label="术语编码">{mappingResult.standardTermCode}</Descriptions.Item>
                       <Descriptions.Item label="ICD编码">{mappingResult.icdCode || '-'}</Descriptions.Item>
                       <Descriptions.Item label="匹配方式">{mappingResult.matchMethod}</Descriptions.Item>
                       <Descriptions.Item label="置信度">
                         <Progress
-                          percent={Math.round((mappingResult.confidence || 0) * 100)}
+                          percent={Math.round((mappingResult.similarityScore || 0) * 100)}
                           size="small"
                         />
                       </Descriptions.Item>
@@ -1076,9 +1076,9 @@ const MedicalTermManagement: React.FC = () => {
                         title={
                           <Space>
                             <Tag color="geekblue">#{index + 1}</Tag>
-                            <strong>{item.standardName}</strong>
-                            {item.aliasName && (
-                              <Tag color="blue">别名：{item.aliasName}</Tag>
+                            <strong>{item.termName}</strong>
+                            {item.matchedText && (
+                              <Tag color="blue">匹配：{item.matchedText}</Tag>
                             )}
                           </Space>
                         }
@@ -1086,13 +1086,13 @@ const MedicalTermManagement: React.FC = () => {
                           <Space>
                             <span>
                               匹配方式：{item.matchMethod}，置信度：
-                              {Math.round((item.confidence || 0) * 100)}%
+                              {Math.round((item.similarityScore || 0) * 100)}%
                             </span>
                           </Space>
                         }
                       />
                       <Progress
-                        percent={Math.round((item.confidence || 0) * 100)}
+                        percent={Math.round((item.similarityScore || 0) * 100)}
                         size="small"
                         style={{ width: 150 }}
                       />
