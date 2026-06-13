@@ -394,6 +394,90 @@ export const qcApi = {
 
   exportReport: (recordId: number) =>
     http.get(`/qc/export/${recordId}`, { responseType: 'blob' }),
+
+  exportReportWithTemplate: (
+    recordId: number,
+    templateId: number,
+    params?: {
+      enableWatermark?: boolean
+      watermarkText?: string
+      outputFormat?: 'PDF' | 'WORD' | 'EXCEL'
+    }
+  ) =>
+    http.get(`/qc/export/${recordId}/template/${templateId}`, {
+      responseType: 'blob',
+      params,
+    }),
+}
+
+export const qcReportTemplateApi = {
+  uploadTemplate: (
+    file: File,
+    params: {
+      templateName?: string
+      fileType?: 'WORD' | 'EXCEL'
+      department?: string
+    },
+    onProgress?: (p: number) => void
+  ) => http.upload<any>('/qc-report-templates/upload', file, params, onProgress),
+
+  list: (params: {
+    templateName?: string
+    fileType?: string
+    department?: string
+    status?: string
+    pageNum: number
+    pageSize: number
+  }) => http.get<any>('/qc-report-templates/list', { params }),
+
+  available: (params?: { department?: string }) =>
+    http.get<any[]>('/qc-report-templates/available', { params }),
+
+  detail: (id: number) => http.get<any>(`/qc-report-templates/${id}`),
+
+  create: (data: any) => http.post<any>('/qc-report-templates', data),
+
+  update: (id: number, data: any) => http.put<any>(`/qc-report-templates/${id}`, data),
+
+  delete: (id: number) => http.delete<void>(`/qc-report-templates/${id}`),
+
+  getVersions: (id: number) => http.get<any[]>(`/qc-report-templates/${id}/versions`),
+
+  getVersion: (id: number, versionNo: number) =>
+    http.get<any>(`/qc-report-templates/${id}/versions/${versionNo}`),
+
+  revertVersion: (id: number, versionNo: number, changeLog?: string) =>
+    http.post<any>(
+      `/qc-report-templates/${id}/versions/revert/${versionNo}`,
+      null,
+      { params: { changeLog } }
+    ),
+
+  preview: (
+    id: number,
+    params?: {
+      mockRecordId?: number
+      enableWatermark?: boolean
+      watermarkText?: string
+    }
+  ) => http.get(`/qc-report-templates/${id}/preview`, { responseType: 'blob', params }),
+
+  parsePlaceholders: (id: number) =>
+    http.get<string[]>(`/qc-report-templates/${id}/parse-placeholders`),
+
+  setDefault: (id: number) =>
+    http.post<void>(`/qc-report-templates/${id}/set-default`),
+
+  toggleStatus: (id: number) =>
+    http.post<void>(`/qc-report-templates/${id}/toggle-status`),
+
+  exportTemplate: (id: number) => http.get<Record<string, any>>(`/qc-report-templates/${id}/export`),
+
+  importTemplate: (file: File, onProgress?: (p: number) => void) =>
+    http.upload<any>('/qc-report-templates/import', file, undefined, onProgress),
+
+  downloadTemplate: (id: number) =>
+    http.get(`/qc-report-templates/${id}/download`, { responseType: 'blob' }),
 }
 
 export const hisSyncApi = {

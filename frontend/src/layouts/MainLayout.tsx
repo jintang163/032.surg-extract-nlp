@@ -12,6 +12,8 @@ import {
   FileMarkdownOutlined,
   AudioOutlined,
   ApiOutlined,
+  SafetyCertificateOutlined,
+  FileProtectOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
@@ -37,6 +39,12 @@ const MainLayout: React.FC = () => {
       onClick: () => navigate('/records'),
     },
     {
+      key: '/quality-control',
+      icon: <SafetyCertificateOutlined />,
+      label: '数据质控中心',
+      onClick: () => navigate('/quality-control'),
+    },
+    {
       key: '/voice',
       icon: <AudioOutlined />,
       label: '语音录入',
@@ -49,6 +57,12 @@ const MainLayout: React.FC = () => {
             icon: <FileMarkdownOutlined />,
             label: '手术模板管理',
             onClick: () => navigate('/templates'),
+          },
+          {
+            key: '/qc-report-templates',
+            icon: <FileProtectOutlined />,
+            label: '质控报告模板',
+            onClick: () => navigate('/qc-report-templates'),
           },
           {
             key: '/medical-term',
@@ -67,6 +81,8 @@ const MainLayout: React.FC = () => {
     if (path.startsWith('/templates')) return '/templates'
     if (path.startsWith('/voice')) return '/voice'
     if (path.startsWith('/medical-term')) return '/medical-term'
+    if (path.startsWith('/quality-control')) return '/quality-control'
+    if (path.startsWith('/qc-report-templates')) return '/qc-report-templates'
     return path
   }
 

@@ -679,3 +679,194 @@ export const HisSyncedMap: Record<number, { label: string; status: string; color
   2: { label: '同步失败', status: 'error', color: '#ff4d4f' },
   3: { label: '回滚失败', status: 'warning', color: '#faad14' },
 }
+
+export type QcReportTemplateFileType = 'WORD' | 'EXCEL'
+
+export const QcReportTemplateFileTypeMap: Record<QcReportTemplateFileType, { label: string; icon: string; accept: string }> = {
+  WORD: { label: 'Word文档', icon: 'FileWordOutlined', accept: '.doc,.docx' },
+  EXCEL: { label: 'Excel表格', icon: 'FileExcelOutlined', accept: '.xls,.xlsx' },
+}
+
+export type QcReportTemplateStatus = 'DRAFT' | 'ACTIVE' | 'INACTIVE'
+
+export const QcReportTemplateStatusMap: Record<QcReportTemplateStatus, { label: string; color: string }> = {
+  DRAFT: { label: '草稿', color: 'default' },
+  ACTIVE: { label: '启用', color: 'success' },
+  INACTIVE: { label: '停用', color: 'warning' },
+}
+
+export interface QcFieldBinding {
+  id?: number
+  templateId?: number
+  placeholderKey: string
+  placeholderLabel: string
+  qcFieldKey: string
+  qcFieldLabel: string
+  fieldType: 'SCALAR' | 'LIST' | 'TABLE' | 'HEADER'
+  description?: string
+  sortOrder?: number
+}
+
+export interface QcReportTemplate {
+  id: number
+  templateCode: string
+  templateName: string
+  fileType: QcReportTemplateFileType
+  department?: string
+  originalFileName?: string
+  fileUrl?: string
+  fileSize?: number
+  placeholders?: string[]
+  fieldBindings: QcFieldBinding[]
+  currentVersion: number
+  status: QcReportTemplateStatus
+  isDefault: number
+  enableWatermark: number
+  watermarkText?: string
+  description?: string
+  tags?: string
+  sortOrder: number
+  useCount: number
+  createdUserName?: string
+  updatedUserName?: string
+  createdTime: string
+  updatedTime: string
+}
+
+export interface QcReportTemplateVersion {
+  id: number
+  templateId: number
+  versionNo: number
+  originalFileName?: string
+  fileUrl?: string
+  fieldBindings: QcFieldBinding[]
+  changeLog?: string
+  isCurrent: number
+  createdUserName?: string
+  createdTime: string
+}
+
+export interface QcReportTemplateCreateForm {
+  templateCode: string
+  templateName: string
+  fileType: QcReportTemplateFileType
+  department?: string
+  fieldBindings: QcFieldBinding[]
+  status?: QcReportTemplateStatus
+  isDefault?: number
+  enableWatermark?: number
+  watermarkText?: string
+  description?: string
+  tags?: string
+  sortOrder?: number
+  changeLog?: string
+}
+
+export interface QcReportTemplateUpdateForm {
+  templateName?: string
+  fileType?: QcReportTemplateFileType
+  department?: string
+  fieldBindings?: QcFieldBinding[]
+  status?: QcReportTemplateStatus
+  isDefault?: number
+  enableWatermark?: number
+  watermarkText?: string
+  description?: string
+  tags?: string
+  sortOrder?: number
+  changeLog?: string
+}
+
+export interface QcExportConfig {
+  templateId: number
+  recordId: number
+  enableWatermark?: boolean
+  watermarkText?: string
+  outputFormat: 'PDF' | 'WORD' | 'EXCEL'
+}
+
+export const QC_AVAILABLE_FIELDS: {
+  group: string
+  groupLabel: string
+  fields: { key: string; label: string; type: 'SCALAR' | 'LIST' | 'TABLE'; description?: string }[]
+}[] = [
+  {
+    group: 'BASIC',
+    groupLabel: '基本信息',
+    fields: [
+      { key: 'recordNo', label: '记录编号', type: 'SCALAR', description: '质控记录唯一编号' },
+      { key: 'patientName', label: '患者姓名', type: 'SCALAR' },
+      { key: 'patientGender', label: '患者性别', type: 'SCALAR' },
+      { key: 'patientAge', label: '患者年龄', type: 'SCALAR' },
+      { key: 'hospitalNo', label: '住院号', type: 'SCALAR' },
+      { key: 'department', label: '科室', type: 'SCALAR' },
+      { key: 'surgeryName', label: '手术名称', type: 'SCALAR' },
+      { key: 'surgeryDate', label: '手术日期', type: 'SCALAR' },
+      { key: 'surgeon', label: '术者', type: 'SCALAR' },
+      { key: 'chiefSurgeon', label: '主刀医生', type: 'SCALAR' },
+      { key: 'anesthesiologist', label: '麻醉医师', type: 'SCALAR' },
+    ],
+  },
+  {
+    group: 'SCORE',
+    groupLabel: '质控评分',
+    fields: [
+      { key: 'overallScore', label: '综合评分', type: 'SCALAR', description: '0-100分' },
+      { key: 'overallGrade', label: '质量等级', type: 'SCALAR', description: 'A/B/C/D级' },
+      { key: 'completenessScore', label: '完整性评分', type: 'SCALAR' },
+      { key: 'logicConsistencyScore', label: '逻辑一致性评分', type: 'SCALAR' },
+      { key: 'totalFields', label: '总字段数', type: 'SCALAR' },
+      { key: 'filledFields', label: '已填字段数', type: 'SCALAR' },
+      { key: 'requiredFields', label: '必填字段数', type: 'SCALAR' },
+      { key: 'requiredFilled', label: '必填已填数', type: 'SCALAR' },
+      { key: 'completenessRate', label: '完整率', type: 'SCALAR', description: '百分比' },
+      { key: 'logicRuleCount', label: '逻辑规则总数', type: 'SCALAR' },
+      { key: 'logicPassed', label: '逻辑通过数', type: 'SCALAR' },
+      { key: 'logicFailed', label: '逻辑失败数', type: 'SCALAR' },
+      { key: 'logicPassRate', label: '逻辑通过率', type: 'SCALAR' },
+    ],
+  },
+  {
+    group: 'VIOLATION',
+    groupLabel: '质控违规项',
+    fields: [
+      { key: 'violationErrorCount', label: '错误数量', type: 'SCALAR' },
+      { key: 'violationWarningCount', label: '警告数量', type: 'SCALAR' },
+      { key: 'violationTotalCount', label: '问题总数', type: 'SCALAR' },
+      { key: 'violationList', label: '违规项列表', type: 'LIST', description: '包含所有错误和警告的列表' },
+      { key: 'errorList', label: '错误项列表', type: 'LIST', description: '仅包含严重错误' },
+      { key: 'warningList', label: '警告项列表', type: 'LIST', description: '仅包含警告' },
+      { key: 'violationTable', label: '违规项表格', type: 'TABLE', description: '含规则编码、名称、类型、级别、消息的完整表格' },
+    ],
+  },
+  {
+    group: 'FIELD_CHECK',
+    groupLabel: '字段检查明细',
+    fields: [
+      { key: 'fieldCheckTable', label: '字段检查表格', type: 'TABLE', description: '包含所有字段的检查结果' },
+      { key: 'missingRequiredFields', label: '缺失必填字段列表', type: 'LIST' },
+      { key: 'invalidFields', label: '不合规字段列表', type: 'LIST' },
+    ],
+  },
+  {
+    group: 'META',
+    groupLabel: '报告元信息',
+    fields: [
+      { key: 'reportDate', label: '报告生成日期', type: 'SCALAR' },
+      { key: 'reportGenerator', label: '报告生成人', type: 'SCALAR' },
+      { key: 'reportDepartment', label: '报告科室', type: 'SCALAR' },
+      { key: 'reviewerName', label: '审核人', type: 'SCALAR' },
+      { key: 'watermark', label: '水印文本', type: 'SCALAR', description: '科室水印，默认为"科室质控科"' },
+    ],
+  },
+]
+
+export const getAllQcFieldOptions = () => {
+  const options: { key: string; label: string; type: 'SCALAR' | 'LIST' | 'TABLE'; group: string; description?: string }[] = []
+  QC_AVAILABLE_FIELDS.forEach((g) => {
+    g.fields.forEach((f) => {
+      options.push({ ...f, group: g.group })
+    })
+  })
+  return options
+}

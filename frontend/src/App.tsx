@@ -10,6 +10,9 @@ import SurgeryTemplateList from '@/pages/SurgeryTemplateList'
 import SurgeryTemplateEditor from '@/pages/SurgeryTemplateEditor'
 import VoiceRecordingPage from '@/pages/VoiceRecordingPage'
 import MedicalTermManagement from '@/pages/MedicalTermManagement'
+import QualityControlPage from '@/pages/QualityControlPage'
+import QcReportTemplateList from '@/pages/QcReportTemplateList'
+import QcReportTemplateEditor from '@/pages/QcReportTemplateEditor'
 import ProtectedRoute from '@/components/ProtectedRoute'
 
 const App: React.FC = () => {
@@ -35,6 +38,10 @@ const App: React.FC = () => {
         <Route path="voice" element={<VoiceRecordingPage />} />
         <Route path="voice/:recordId" element={<VoiceRecordingPage />} />
         <Route path="medical-term" element={<MedicalTermManagement />} />
+        <Route path="quality-control" element={<QualityControlPage />} />
+        <Route path="qc-report-templates" element={<QcReportTemplateList />} />
+        <Route path="qc-report-templates/new" element={<QcReportTemplateEditor />} />
+        <Route path="qc-report-templates/:id/edit" element={<QcReportTemplateEditor />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
