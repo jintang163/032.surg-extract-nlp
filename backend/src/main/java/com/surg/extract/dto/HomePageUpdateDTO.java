@@ -47,6 +47,8 @@ public class HomePageUpdateDTO {
 
     private String surgeon;
 
+    private String chiefSurgeon;
+
     private String assistant1;
 
     private String assistant2;
@@ -56,6 +58,16 @@ public class HomePageUpdateDTO {
     private String scrubNurse;
 
     private String circulatingNurse;
+
+    private Integer criticalPatient;
+
+    private String admissionDiagnosis;
+
+    private String dischargeDiagnosis;
+
+    private String bedNo;
+
+    private String complicationsStr;
 
     private Integer fillDuration;
 

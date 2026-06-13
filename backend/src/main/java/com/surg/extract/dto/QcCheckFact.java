@@ -23,6 +23,7 @@ public class QcCheckFact {
     private BigDecimal fluidInfusion;
     private String complications;
     private String surgeon;
+    private String chiefSurgeon;
     private String assistant1;
     private String assistant2;
     private String anesthesiologist;

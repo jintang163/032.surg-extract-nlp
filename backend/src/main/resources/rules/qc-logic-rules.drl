@@ -21,19 +21,19 @@ rule "QC-L001: 出血量>1000ml必须填写输血量"
         ));
 end
 
-rule "QC-L002: 手术医生不能与麻醉医生为同一人"
-    salience 90
+rule "QC-L002: 手术医生与主刀医生必须一致"
+    salience 95
     when
         $fact : QcCheckFact(surgeon != null, surgeon.length() > 0,
-                           anesthesiologist != null, anesthesiologist.length() > 0,
-                           surgeon.equals(anesthesiologist))
+                           chiefSurgeon != null, chiefSurgeon.length() > 0,
+                           !surgeon.equals(chiefSurgeon))
     then
         List fields = new ArrayList();
         fields.add("surgeon");
-        fields.add("anesthesiologist");
+        fields.add("chiefSurgeon");
         $fact.getViolations().add(new QcViolation(
-            "QC-L002", "手术医生与麻醉医生不能为同一人", "LOGIC_CONSISTENCY",
-            "ERROR", "手术医生与麻醉医生均为" + $fact.getSurgeon() + "，请确认是否正确", fields
+            "QC-L002", "手术医生与主刀医生必须一致", "LOGIC_CONSISTENCY",
+            "ERROR", "手术医生为" + $fact.getSurgeon() + "，主刀医生为" + $fact.getChiefSurgeon() + "，两者必须一致", fields
         ));
 end
 
@@ -153,5 +153,21 @@ rule "QC-L010: 麻醉方式为全身麻醉时需填写麻醉医生"
         $fact.getViolations().add(new QcViolation(
             "QC-L010", "全身麻醉需填写麻醉医生", "LOGIC_CONSISTENCY",
             "ERROR", "麻醉方式为全身麻醉，但未填写麻醉医生", fields
+        ));
+end
+
+rule "QC-L011: 手术医生与麻醉医生不能为同一人"
+    salience 30
+    when
+        $fact : QcCheckFact(surgeon != null, surgeon.length() > 0,
+                           anesthesiologist != null, anesthesiologist.length() > 0,
+                           surgeon.equals(anesthesiologist))
+    then
+        List fields = new ArrayList();
+        fields.add("surgeon");
+        fields.add("anesthesiologist");
+        $fact.getViolations().add(new QcViolation(
+            "QC-L011", "手术医生与麻醉医生不能为同一人", "LOGIC_CONSISTENCY",
+            "WARNING", "手术医生与麻醉医生均为" + $fact.getSurgeon() + "，请确认是否正确", fields
         ));
 end

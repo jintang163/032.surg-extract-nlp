@@ -28,22 +28,37 @@ import type { QcCheckResult, QcScorecard, QcViolation, QcFieldCheck } from '@/ty
 import { QcSeverityMap, QcCategoryMap } from '@/types'
 
 interface QualityReportPanelProps {
-  recordId: number
+  recordId?: number
+  checkResult?: QcCheckResult | null
+  scorecard?: QcScorecard | null
+  loading?: boolean
   onViolationFieldsChange?: (fields: string[]) => void
+  onRefresh?: () => void
 }
 
 const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
   recordId,
+  checkResult: externalCheckResult,
+  scorecard: externalScorecard,
+  loading: externalLoading,
   onViolationFieldsChange,
+  onRefresh,
 }) => {
-  const [loading, setLoading] = useState(false)
-  const [scorecard, setScorecard] = useState<QcScorecard | null>(null)
-  const [checkResult, setCheckResult] = useState<QcCheckResult | null>(null)
+  const [internalLoading, setInternalLoading] = useState(false)
+  const [internalScorecard, setInternalScorecard] = useState<QcScorecard | null>(null)
+  const [internalCheckResult, setInternalCheckResult] = useState<QcCheckResult | null>(null)
   const [exporting, setExporting] = useState(false)
 
+  const loading = externalLoading !== undefined ? externalLoading : internalLoading
+  const scorecard = externalScorecard !== undefined ? externalScorecard : internalScorecard
+  const checkResult = externalCheckResult !== undefined ? externalCheckResult : internalCheckResult
+  const isExternalMode = externalCheckResult !== undefined || externalScorecard !== undefined
+
   useEffect(() => {
-    loadQcData()
-  }, [recordId])
+    if (!isExternalMode && recordId) {
+      loadQcData()
+    }
+  }, [recordId, isExternalMode])
 
   useEffect(() => {
     if (checkResult?.violations) {
@@ -56,18 +71,18 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
   }, [checkResult, onViolationFieldsChange])
 
   const loadQcData = async () => {
-    setLoading(true)
+    setInternalLoading(true)
     try {
       const [scorecardData, checkData] = await Promise.all([
-        qcApi.getScorecard(recordId).catch(() => null),
-        qcApi.validate(recordId).catch(() => null),
+        qcApi.getScorecard(recordId!).catch(() => null),
+        qcApi.validate(recordId!).catch(() => null),
       ])
-      setScorecard(scorecardData)
-      setCheckResult(checkData)
+      setInternalScorecard(scorecardData)
+      setInternalCheckResult(checkData)
     } catch (e) {
       console.error('加载质控数据失败', e)
     } finally {
-      setLoading(false)
+      setInternalLoading(false)
     }
   }
 
@@ -133,19 +148,27 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
               type="text"
               size="small"
               icon={<ReloadOutlined />}
-              onClick={loadQcData}
+              onClick={() => {
+                if (isExternalMode && onRefresh) {
+                  onRefresh()
+                } else if (!isExternalMode && recordId) {
+                  loadQcData()
+                }
+              }}
               loading={loading}
             />
           </Tooltip>
-          <Tooltip title="导出报告">
-            <Button
-              type="text"
-              size="small"
-              icon={<FileExcelOutlined />}
-              onClick={handleExport}
-              loading={exporting}
-            />
-          </Tooltip>
+          {recordId && (
+            <Tooltip title="导出报告">
+              <Button
+                type="text"
+                size="small"
+                icon={<FileExcelOutlined />}
+                onClick={handleExport}
+                loading={exporting}
+              />
+            </Tooltip>
+          )}
         </Space>
       }
       loading={loading}

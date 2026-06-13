@@ -61,6 +61,7 @@ public class QualityControlService {
         FIELD_LABEL_MAP.put("bloodTransfusion", "输血量");
         FIELD_LABEL_MAP.put("fluidInfusion", "输液量");
         FIELD_LABEL_MAP.put("surgeon", "手术医生");
+        FIELD_LABEL_MAP.put("chiefSurgeon", "主刀医生");
         FIELD_LABEL_MAP.put("assistant1", "第一助手");
         FIELD_LABEL_MAP.put("assistant2", "第二助手");
         FIELD_LABEL_MAP.put("anesthesiologist", "麻醉医生");
@@ -124,7 +125,7 @@ public class QualityControlService {
             QcCheckResult result = new QcCheckResult();
             result.setViolations(fact.getViolations());
 
-            int logicRules = 10;
+            int logicRules = 11;
             int completenessRules = 8;
             int totalRules = logicRules + completenessRules;
 
@@ -179,7 +180,7 @@ public class QualityControlService {
         long logicWarnings = checkResult.getViolations().stream()
                 .filter(v -> "LOGIC_CONSISTENCY".equals(v.getCategory()) && "WARNING".equals(v.getSeverity()))
                 .count();
-        int logicRuleCount = 10;
+        int logicRuleCount = 11;
         int logicPassed = logicRuleCount - (int) logicErrors - (int) logicWarnings;
         if (logicPassed < 0) logicPassed = 0;
 
@@ -387,6 +388,7 @@ public class QualityControlService {
         fact.setFluidInfusion(home.getFluidInfusion());
         fact.setComplications(home.getComplications());
         fact.setSurgeon(home.getSurgeon());
+        fact.setChiefSurgeon(home.getChiefSurgeon());
         fact.setAssistant1(home.getAssistant1());
         fact.setAssistant2(home.getAssistant2());
         fact.setAnesthesiologist(home.getAnesthesiologist());
@@ -417,17 +419,24 @@ public class QualityControlService {
         fact.setBloodTransfusion(dto.getBloodTransfusion());
         fact.setFluidInfusion(dto.getFluidInfusion());
         fact.setSurgeon(dto.getSurgeon());
+        fact.setChiefSurgeon(dto.getChiefSurgeon());
         fact.setAssistant1(dto.getAssistant1());
         fact.setAssistant2(dto.getAssistant2());
         fact.setAnesthesiologist(dto.getAnesthesiologist());
         fact.setScrubNurse(dto.getScrubNurse());
         fact.setCirculatingNurse(dto.getCirculatingNurse());
+        fact.setCriticalPatient(dto.getCriticalPatient());
+        fact.setAdmissionDiagnosis(dto.getAdmissionDiagnosis());
+        fact.setDischargeDiagnosis(dto.getDischargeDiagnosis());
+        fact.setBedNo(dto.getBedNo());
         if (dto.getComplications() != null) {
             try {
                 fact.setComplications(objectMapper.writeValueAsString(dto.getComplications()));
             } catch (JsonProcessingException e) {
                 fact.setComplications("[]");
             }
+        } else if (dto.getComplicationsStr() != null) {
+            fact.setComplications(dto.getComplicationsStr());
         }
         return fact;
     }
@@ -452,6 +461,7 @@ public class QualityControlService {
         if (home.getBloodTransfusion() != null) count++;
         if (home.getFluidInfusion() != null) count++;
         if (StringUtils.hasText(home.getSurgeon())) count++;
+        if (StringUtils.hasText(home.getChiefSurgeon())) count++;
         if (StringUtils.hasText(home.getAssistant1())) count++;
         if (StringUtils.hasText(home.getAssistant2())) count++;
         if (StringUtils.hasText(home.getAnesthesiologist())) count++;
@@ -459,6 +469,7 @@ public class QualityControlService {
         if (StringUtils.hasText(home.getCirculatingNurse())) count++;
         if (StringUtils.hasText(home.getComplications()) && !"[]".equals(home.getComplications())) count++;
         if (home.getCriticalPatient() != null) count++;
+        if (StringUtils.hasText(home.getBedNo())) count++;
         return count;
     }
 
@@ -507,6 +518,7 @@ public class QualityControlService {
         addFieldCheck(checks, "bloodTransfusion", "输血量", home.getBloodTransfusion() != null, false, fieldViolations);
         addFieldCheck(checks, "fluidInfusion", "输液量", home.getFluidInfusion() != null, false, fieldViolations);
         addFieldCheck(checks, "surgeon", "手术医生", home.getSurgeon() != null && !home.getSurgeon().isEmpty(), true, fieldViolations);
+        addFieldCheck(checks, "chiefSurgeon", "主刀医生", home.getChiefSurgeon() != null && !home.getChiefSurgeon().isEmpty(), false, fieldViolations);
         addFieldCheck(checks, "assistant1", "第一助手", home.getAssistant1() != null && !home.getAssistant1().isEmpty(), false, fieldViolations);
         addFieldCheck(checks, "anesthesiologist", "麻醉医生", home.getAnesthesiologist() != null && !home.getAnesthesiologist().isEmpty(), true, fieldViolations);
         addFieldCheck(checks, "scrubNurse", "器械护士", home.getScrubNurse() != null && !home.getScrubNurse().isEmpty(), false, fieldViolations);

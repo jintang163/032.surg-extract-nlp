@@ -86,11 +86,17 @@ public class MedicalRecordHomeService {
         home.setBloodTransfusion(dto.getBloodTransfusion());
         home.setFluidInfusion(dto.getFluidInfusion());
         home.setSurgeon(dto.getSurgeon());
+        home.setChiefSurgeon(dto.getChiefSurgeon());
         home.setAssistant1(dto.getAssistant1());
         home.setAssistant2(dto.getAssistant2());
         home.setAnesthesiologist(dto.getAnesthesiologist());
         home.setScrubNurse(dto.getScrubNurse());
         home.setCirculatingNurse(dto.getCirculatingNurse());
+        home.setCriticalPatient(dto.getCriticalPatient());
+        home.setAdmissionDiagnosis(dto.getAdmissionDiagnosis());
+        home.setDischargeDiagnosis(dto.getDischargeDiagnosis());
+        home.setBedNo(dto.getBedNo());
+        home.setAdmissionDays(dto.getAdmissionDays());
         home.setFillStartTime(dto.getFillStartTime());
         home.setFillEndTime(dto.getFillEndTime());
 

@@ -352,6 +352,7 @@ export interface MedicalRecordHome {
   fluidInfusion?: number
   complications?: string[]
   surgeon?: string
+  chiefSurgeon?: string
   assistant1?: string
   assistant2?: string
   anesthesiologist?: string
@@ -556,6 +557,7 @@ export const HOME_PAGE_FIELDS: HomePageField[] = [
   { key: 'bloodTransfusion', label: '输血量(ml)' },
   { key: 'fluidInfusion', label: '输液量(ml)' },
   { key: 'surgeon', label: '术者' },
+  { key: 'chiefSurgeon', label: '主刀医生' },
   { key: 'assistant1', label: '第一助手' },
   { key: 'anesthesiologist', label: '麻醉医师' },
   { key: 'scrubNurse', label: '器械护士' },

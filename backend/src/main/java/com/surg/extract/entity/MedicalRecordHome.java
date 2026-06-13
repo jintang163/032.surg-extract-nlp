@@ -71,6 +71,8 @@ public class MedicalRecordHome implements Serializable {
 
     private String surgeon;
 
+    private String chiefSurgeon;
+
     private String assistant1;
 
     private String assistant2;

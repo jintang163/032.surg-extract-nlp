@@ -84,6 +84,8 @@ const HomePageFill: React.FC = () => {
   const [qcCheckResult, setQcCheckResult] = useState<QcCheckResult | null>(null)
   const [showQcModal, setShowQcModal] = useState(false)
   const [qcValidating, setQcValidating] = useState(false)
+  const qcDebounceRef = useRef<NodeJS.Timeout | null>(null)
+  const qcAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     timerRef.current = setInterval(() => {
@@ -122,6 +124,10 @@ const HomePageFill: React.FC = () => {
 
       const required = mappings.filter((m) => m.required === 1).map((m) => m.targetField)
       setRequiredFields(required)
+
+      setTimeout(() => {
+        validateFormQc()
+      }, 300)
     } catch (e) {
       console.error('加载数据失败', e)
       message.error('加载数据失败')
@@ -242,6 +248,47 @@ const HomePageFill: React.FC = () => {
   const handleViolationFieldsChange = useCallback((fields: string[]) => {
     setQcViolationFields(fields)
   }, [])
+
+  const validateFormQc = useCallback(async () => {
+    if (recId <= 0) return
+    try {
+      if (qcAbortRef.current) {
+        qcAbortRef.current.abort()
+      }
+      const abortController = new AbortController()
+      qcAbortRef.current = abortController
+
+      setQcValidating(true)
+      const values = form.getFieldsValue()
+      const data = transformFormData(values)
+
+      const result = await qcApi.validateForm(data)
+      if (abortController.signal.aborted) return
+
+      setQcCheckResult(result)
+
+      const violationFields = new Set<string>()
+      result.violations?.forEach((v: QcViolation) => {
+        v.relatedFields?.forEach((f: string) => violationFields.add(f))
+      })
+      setQcViolationFields(Array.from(violationFields))
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') {
+        console.warn('实时质控校验失败', e)
+      }
+    } finally {
+      setQcValidating(false)
+    }
+  }, [form, recId, transformFormData])
+
+  const debouncedValidateQc = useCallback(() => {
+    if (qcDebounceRef.current) {
+      clearTimeout(qcDebounceRef.current)
+    }
+    qcDebounceRef.current = setTimeout(() => {
+      validateFormQc()
+    }, 500)
+  }, [validateFormQc])
 
   const getFieldViolationInfo = useCallback((fieldName: string) => {
     if (!qcCheckResult?.violations) return null
@@ -445,8 +492,10 @@ const HomePageFill: React.FC = () => {
                 </span>
               )}
               onValuesChange={() => {
-                // 触发必填项重算
                 setRequiredFields([...requiredFields])
+                if (!readOnly) {
+                  debouncedValidateQc()
+                }
               }}
             >
               <Divider orientation="left" orientationMargin={0}>
@@ -781,6 +830,18 @@ const HomePageFill: React.FC = () => {
                 </Col>
                 <Col xs={24} sm={12} md={8}>
                   <Form.Item
+                    label="主刀医生"
+                    name="chiefSurgeon"
+                    rules={[{ required: requiredFields.includes('chiefSurgeon'), message: '请输入主刀医生姓名' }]}
+                    className={getFormItemClassName('chiefSurgeon')}
+                    help={getFormItemHelp('chiefSurgeon')}
+                    validateStatus={getFormItemStatus('chiefSurgeon') as any}
+                  >
+                    <Input placeholder="请输入" maxLength={32} />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={12} md={8}>
+                  <Form.Item
                     label="第一助手"
                     name="assistant1"
                     className={getFormItemClassName('assistant1')}
@@ -852,7 +913,10 @@ const HomePageFill: React.FC = () => {
               <div style={{ marginBottom: 16 }}>
                 <QualityReportPanel
                   recordId={recId}
+                  checkResult={qcCheckResult}
+                  loading={qcValidating}
                   onViolationFieldsChange={handleViolationFieldsChange}
+                  onRefresh={validateFormQc}
                 />
               </div>
             )}
