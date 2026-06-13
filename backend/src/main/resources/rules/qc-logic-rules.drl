@@ -1,0 +1,157 @@
+package rules
+
+import com.surg.extract.dto.QcCheckFact
+import com.surg.extract.dto.QcCheckResult
+import com.surg.extract.dto.QcCheckResult.QcViolation
+import java.util.ArrayList
+import java.util.List
+
+rule "QC-L001: 出血量>1000ml必须填写输血量"
+    salience 100
+    when
+        $fact : QcCheckFact(bloodLoss != null, bloodLoss > 1000,
+                           (bloodTransfusion == null || bloodTransfusion == 0))
+    then
+        List fields = new ArrayList();
+        fields.add("bloodLoss");
+        fields.add("bloodTransfusion");
+        $fact.getViolations().add(new QcViolation(
+            "QC-L001", "出血量>1000ml必须填写输血量", "LOGIC_CONSISTENCY",
+            "ERROR", "出血量为" + $fact.getBloodLoss() + "ml（>1000ml），但未填写输血量", fields
+        ));
+end
+
+rule "QC-L002: 手术医生不能与麻醉医生为同一人"
+    salience 90
+    when
+        $fact : QcCheckFact(surgeon != null, surgeon.length() > 0,
+                           anesthesiologist != null, anesthesiologist.length() > 0,
+                           surgeon.equals(anesthesiologist))
+    then
+        List fields = new ArrayList();
+        fields.add("surgeon");
+        fields.add("anesthesiologist");
+        $fact.getViolations().add(new QcViolation(
+            "QC-L002", "手术医生与麻醉医生不能为同一人", "LOGIC_CONSISTENCY",
+            "ERROR", "手术医生与麻醉医生均为" + $fact.getSurgeon() + "，请确认是否正确", fields
+        ));
+end
+
+rule "QC-L003: 术前诊断与术后诊断不应完全相同"
+    salience 80
+    when
+        $fact : QcCheckFact(admissionDiagnosis != null, dischargeDiagnosis != null,
+                           admissionDiagnosis.equals(dischargeDiagnosis),
+                           admissionDiagnosis.length() > 0)
+    then
+        List fields = new ArrayList();
+        fields.add("admissionDiagnosis");
+        fields.add("dischargeDiagnosis");
+        $fact.getViolations().add(new QcViolation(
+            "QC-L003", "术前诊断与术后诊断完全相同", "LOGIC_CONSISTENCY",
+            "WARNING", "术前诊断与术后诊断完全相同（" + $fact.getAdmissionDiagnosis() + "），请确认是否正确", fields
+        ));
+end
+
+rule "QC-L004: 三级/四级手术必须填写手术等级"
+    salience 70
+    when
+        $fact : QcCheckFact(surgeryLevel != null,
+                           (surgeryLevel.equals("三级") || surgeryLevel.equals("四级")),
+                           (assistant1 == null || assistant1.length() == 0))
+    then
+        List fields = new ArrayList();
+        fields.add("surgeryLevel");
+        fields.add("assistant1");
+        $fact.getViolations().add(new QcViolation(
+            "QC-L004", "三级/四级手术需有助手", "LOGIC_CONSISTENCY",
+            "WARNING", "手术等级为" + $fact.getSurgeryLevel() + "，但未填写助手", fields
+        ));
+end
+
+rule "QC-L005: 年龄异常校验"
+    salience 60
+    when
+        $fact : QcCheckFact(age != null, (age < 0 || age > 150))
+    then
+        List fields = new ArrayList();
+        fields.add("age");
+        $fact.getViolations().add(new QcViolation(
+            "QC-L005", "年龄值异常", "LOGIC_CONSISTENCY",
+            "ERROR", "年龄为" + $fact.getAge() + "，超出合理范围（0-150）", fields
+        ));
+end
+
+rule "QC-L006: 输血量不应大于出血量"
+    salience 55
+    when
+        $fact : QcCheckFact(bloodLoss != null, bloodTransfusion != null,
+                           bloodTransfusion > bloodLoss, bloodLoss > 0)
+    then
+        List fields = new ArrayList();
+        fields.add("bloodLoss");
+        fields.add("bloodTransfusion");
+        $fact.getViolations().add(new QcViolation(
+            "QC-L006", "输血量不应大于出血量", "LOGIC_CONSISTENCY",
+            "WARNING", "输血量(" + $fact.getBloodTransfusion() + "ml)大于出血量(" + $fact.getBloodLoss() + "ml)，请确认", fields
+        ));
+end
+
+rule "QC-L007: 切口等级为Ⅲ类时需关注切口愈合情况"
+    salience 50
+    when
+        $fact : QcCheckFact(incisionLevel != null, incisionLevel.equals("Ⅲ"),
+                           (incisionHealing == null || incisionHealing.length() == 0))
+    then
+        List fields = new ArrayList();
+        fields.add("incisionLevel");
+        fields.add("incisionHealing");
+        $fact.getViolations().add(new QcViolation(
+            "QC-L007", "Ⅲ类切口需填写愈合等级", "LOGIC_CONSISTENCY",
+            "WARNING", "切口等级为Ⅲ类（污染切口），但未填写切口愈合等级", fields
+        ));
+end
+
+rule "QC-L008: 危重患者必须填写并发症"
+    salience 45
+    when
+        $fact : QcCheckFact(criticalPatient != null, criticalPatient == 1,
+                           (complications == null || complications.length() == 0 || complications.equals("[]")))
+    then
+        List fields = new ArrayList();
+        fields.add("criticalPatient");
+        fields.add("complications");
+        $fact.getViolations().add(new QcViolation(
+            "QC-L008", "危重患者需填写并发症", "LOGIC_CONSISTENCY",
+            "ERROR", "标记为危重患者，但未填写术中并发症", fields
+        ));
+end
+
+rule "QC-L009: 出血量异常大需关注"
+    salience 40
+    when
+        $fact : QcCheckFact(bloodLoss != null, bloodLoss > 3000)
+    then
+        List fields = new ArrayList();
+        fields.add("bloodLoss");
+        $fact.getViolations().add(new QcViolation(
+            "QC-L009", "出血量异常大", "LOGIC_CONSISTENCY",
+            "WARNING", "出血量为" + $fact.getBloodLoss() + "ml（>3000ml），请确认数据准确性", fields
+        ));
+end
+
+rule "QC-L010: 麻醉方式为全身麻醉时需填写麻醉医生"
+    salience 35
+    when
+        $fact : QcCheckFact(anesthesiaType != null,
+                           anesthesiaType.contains("全身"),
+                           (anesthesiologist == null || anesthesiologist.length() == 0))
+    then
+        List fields = new ArrayList();
+        fields.add("anesthesiaType");
+        fields.add("anesthesiologist");
+        $fact.getViolations().add(new QcViolation(
+            "QC-L010", "全身麻醉需填写麻醉医生", "LOGIC_CONSISTENCY",
+            "ERROR", "麻醉方式为全身麻醉，但未填写麻醉医生", fields
+        ));
+end

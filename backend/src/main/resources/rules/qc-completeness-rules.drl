@@ -1,0 +1,111 @@
+package rules
+
+import com.surg.extract.dto.QcCheckFact
+import com.surg.extract.dto.QcCheckResult
+import com.surg.extract.dto.QcCheckResult.QcViolation
+import java.util.ArrayList
+import java.util.List
+
+rule "QC-C001: 患者姓名缺失"
+    salience 100
+    when
+        $fact : QcCheckFact(patientName == null || patientName.length() == 0)
+    then
+        List fields = new ArrayList();
+        fields.add("patientName");
+        $fact.getViolations().add(new QcViolation(
+            "QC-C001", "患者姓名缺失", "COMPLETENESS",
+            "ERROR", "患者姓名为必填项，当前为空", fields
+        ));
+end
+
+rule "QC-C002: 住院号缺失"
+    salience 95
+    when
+        $fact : QcCheckFact(hospitalNo == null || hospitalNo.length() == 0)
+    then
+        List fields = new ArrayList();
+        fields.add("hospitalNo");
+        $fact.getViolations().add(new QcViolation(
+            "QC-C002", "住院号缺失", "COMPLETENESS",
+            "ERROR", "住院号为必填项，当前为空", fields
+        ));
+end
+
+rule "QC-C003: 性别缺失"
+    salience 90
+    when
+        $fact : QcCheckFact(gender == null || gender.length() == 0)
+    then
+        List fields = new ArrayList();
+        fields.add("gender");
+        $fact.getViolations().add(new QcViolation(
+            "QC-C003", "性别缺失", "COMPLETENESS",
+            "ERROR", "性别为必填项，当前为空", fields
+        ));
+end
+
+rule "QC-C004: 手术名称缺失"
+    salience 85
+    when
+        $fact : QcCheckFact(surgeryName == null || surgeryName.length() == 0)
+    then
+        List fields = new ArrayList();
+        fields.add("surgeryName");
+        $fact.getViolations().add(new QcViolation(
+            "QC-C004", "手术名称缺失", "COMPLETENESS",
+            "ERROR", "手术名称为必填项，当前为空", fields
+        ));
+end
+
+rule "QC-C005: 手术日期缺失"
+    salience 80
+    when
+        $fact : QcCheckFact(surgeryDate == null || surgeryDate.length() == 0)
+    then
+        List fields = new ArrayList();
+        fields.add("surgeryDate");
+        $fact.getViolations().add(new QcViolation(
+            "QC-C005", "手术日期缺失", "COMPLETENESS",
+            "ERROR", "手术日期为必填项，当前为空", fields
+        ));
+end
+
+rule "QC-C006: 手术医生缺失"
+    salience 75
+    when
+        $fact : QcCheckFact(surgeon == null || surgeon.length() == 0)
+    then
+        List fields = new ArrayList();
+        fields.add("surgeon");
+        $fact.getViolations().add(new QcViolation(
+            "QC-C006", "手术医生缺失", "COMPLETENESS",
+            "ERROR", "手术医生为必填项，当前为空", fields
+        ));
+end
+
+rule "QC-C007: 麻醉方式缺失"
+    salience 70
+    when
+        $fact : QcCheckFact(anesthesiaType == null || anesthesiaType.length() == 0)
+    then
+        List fields = new ArrayList();
+        fields.add("anesthesiaType");
+        $fact.getViolations().add(new QcViolation(
+            "QC-C007", "麻醉方式缺失", "COMPLETENESS",
+            "ERROR", "麻醉方式为必填项，当前为空", fields
+        ));
+end
+
+rule "QC-C008: 切口等级缺失"
+    salience 65
+    when
+        $fact : QcCheckFact(incisionLevel == null || incisionLevel.length() == 0)
+    then
+        List fields = new ArrayList();
+        fields.add("incisionLevel");
+        $fact.getViolations().add(new QcViolation(
+            "QC-C008", "切口等级缺失", "COMPLETENESS",
+            "ERROR", "切口等级为必填项，当前为空", fields
+        ));
+end

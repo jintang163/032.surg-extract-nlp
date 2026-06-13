@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useMemo } from 'react'
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import {
   Card,
   Button,
@@ -25,6 +25,7 @@ import {
   Descriptions,
   Result,
   Badge,
+  Collapse,
 } from 'antd'
 import {
   ArrowLeftOutlined,
@@ -34,6 +35,7 @@ import {
   ClockCircleOutlined,
   CheckCircleTwoTone,
   CheckCircleOutlined,
+  CloseCircleOutlined,
   InfoCircleOutlined,
   UserOutlined,
   FileTextOutlined,
@@ -42,11 +44,15 @@ import {
   AuditOutlined,
   FileDoneOutlined,
   SyncOutlined,
+  SafetyCertificateOutlined,
+  ExclamationCircleOutlined,
+  WarningOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
-import { homePageApi, recordApi } from '@/services/api'
-import type { MedicalRecordHome, FieldMapping, SurgeryRecord } from '@/types'
-import { HomePageStatusMap } from '@/types'
+import { homePageApi, recordApi, qcApi } from '@/services/api'
+import type { MedicalRecordHome, FieldMapping, SurgeryRecord, QcCheckResult, QcViolation } from '@/types'
+import { HomePageStatusMap, QcSeverityMap, QcCategoryMap, HOME_PAGE_FIELD_LABEL_MAP } from '@/types'
+import QualityReportPanel from '@/components/QualityReportPanel'
 import dayjs from 'dayjs'
 
 const { RangePicker } = DatePicker
@@ -74,6 +80,10 @@ const HomePageFill: React.FC = () => {
   const [showSubmitModal, setShowSubmitModal] = useState(false)
   const [requiredFields, setRequiredFields] = useState<string[]>([])
   const [missingFields, setMissingFields] = useState<string[]>([])
+  const [qcViolationFields, setQcViolationFields] = useState<string[]>([])
+  const [qcCheckResult, setQcCheckResult] = useState<QcCheckResult | null>(null)
+  const [showQcModal, setShowQcModal] = useState(false)
+  const [qcValidating, setQcValidating] = useState(false)
 
   useEffect(() => {
     timerRef.current = setInterval(() => {
@@ -165,6 +175,29 @@ const HomePageFill: React.FC = () => {
         return
       }
 
+      setQcValidating(true)
+      try {
+        const data = transformFormData(values)
+        const qcResult = await qcApi.validateForm(data)
+        setQcCheckResult(qcResult)
+
+        const violationFields = new Set<string>()
+        qcResult.violations?.forEach((v: QcViolation) => {
+          v.relatedFields?.forEach((f: string) => violationFields.add(f))
+        })
+        setQcViolationFields(Array.from(violationFields))
+
+        const hasErrors = qcResult.violations?.some((v: QcViolation) => v.severity === 'ERROR')
+        if (hasErrors) {
+          setShowQcModal(true)
+          return
+        }
+      } catch (e) {
+        console.warn('质控校验失败，继续提交流程', e)
+      } finally {
+        setQcValidating(false)
+      }
+
       setSubmitting(true)
       const data = transformFormData(values)
       data.fillStartTime = fillStartTime.format('YYYY-MM-DDTHH:mm:ss')
@@ -184,6 +217,59 @@ const HomePageFill: React.FC = () => {
       setSubmitting(false)
     }
   }
+
+  const forceSubmitAfterQc = async () => {
+    setShowQcModal(false)
+    setSubmitting(true)
+    try {
+      const values = form.getFieldsValue()
+      const data = transformFormData(values)
+      data.fillStartTime = fillStartTime.format('YYYY-MM-DDTHH:mm:ss')
+      data.fillEndTime = dayjs().format('YYYY-MM-DDTHH:mm:ss')
+      data.fillDuration = elapsedTime
+      await homePageApi.update(recId, data)
+      await homePageApi.submit(recId)
+      if (timerRef.current) clearInterval(timerRef.current)
+      message.success('已强制提交')
+      setTimeout(() => loadData(), 500)
+    } catch (e: any) {
+      message.error(e?.message || '提交失败')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleViolationFieldsChange = useCallback((fields: string[]) => {
+    setQcViolationFields(fields)
+  }, [])
+
+  const getFieldViolationInfo = useCallback((fieldName: string) => {
+    if (!qcCheckResult?.violations) return null
+    const violations = qcCheckResult.violations.filter(
+      (v) => v.relatedFields?.includes(fieldName)
+    )
+    if (violations.length === 0) return null
+    const hasError = violations.some((v) => v.severity === 'ERROR')
+    const messages = violations.map((v) => v.message).join('；')
+    return { hasError, messages, violations }
+  }, [qcCheckResult])
+
+  const getFormItemStatus = useCallback((fieldName: string) => {
+    const info = getFieldViolationInfo(fieldName)
+    if (!info) return ''
+    return info.hasError ? 'error' : 'warning'
+  }, [getFieldViolationInfo])
+
+  const getFormItemHelp = useCallback((fieldName: string) => {
+    const info = getFieldViolationInfo(fieldName)
+    return info?.messages
+  }, [getFieldViolationInfo])
+
+  const getFormItemClassName = useCallback((fieldName: string) => {
+    const info = getFieldViolationInfo(fieldName)
+    if (!info) return ''
+    return info.hasError ? 'qc-field-error' : 'qc-field-warning'
+  }, [getFieldViolationInfo])
 
   const forceSubmit = async () => {
     try {
@@ -397,6 +483,9 @@ const HomePageFill: React.FC = () => {
                     label="年龄"
                     name="age"
                     rules={[{ required: requiredFields.includes('age'), message: '请输入年龄' }]}
+                    className={getFormItemClassName('age')}
+                    help={getFormItemHelp('age')}
+                    validateStatus={getFormItemStatus('age') as any}
                   >
                     <InputNumber min={0} max={150} addonAfter="岁" style={{ width: '100%' }} />
                   </Form.Item>
@@ -453,12 +542,24 @@ const HomePageFill: React.FC = () => {
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={12} md={8}>
-                  <Form.Item label="入院诊断" name="admissionDiagnosis">
+                  <Form.Item
+                    label="入院诊断"
+                    name="admissionDiagnosis"
+                    className={getFormItemClassName('admissionDiagnosis')}
+                    help={getFormItemHelp('admissionDiagnosis')}
+                    validateStatus={getFormItemStatus('admissionDiagnosis') as any}
+                  >
                     <Input placeholder="ICD-10编码或诊断名称" maxLength={128} />
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={12} md={8}>
-                  <Form.Item label="出院诊断" name="dischargeDiagnosis">
+                  <Form.Item
+                    label="出院诊断"
+                    name="dischargeDiagnosis"
+                    className={getFormItemClassName('dischargeDiagnosis')}
+                    help={getFormItemHelp('dischargeDiagnosis')}
+                    validateStatus={getFormItemStatus('dischargeDiagnosis') as any}
+                  >
                     <Input placeholder="ICD-10编码或诊断名称" maxLength={128} />
                   </Form.Item>
                 </Col>
@@ -496,7 +597,13 @@ const HomePageFill: React.FC = () => {
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={12} md={8}>
-                  <Form.Item label="手术等级" name="surgeryLevel">
+                  <Form.Item
+                    label="手术等级"
+                    name="surgeryLevel"
+                    className={getFormItemClassName('surgeryLevel')}
+                    help={getFormItemHelp('surgeryLevel')}
+                    validateStatus={getFormItemStatus('surgeryLevel') as any}
+                  >
                     <Select placeholder="请选择">
                       <Option value="一级">一级</Option>
                       <Option value="二级">二级</Option>
@@ -510,6 +617,9 @@ const HomePageFill: React.FC = () => {
                     label="切口等级"
                     name="incisionLevel"
                     rules={[{ required: requiredFields.includes('incision_level'), message: '请选择切口等级' }]}
+                    className={getFormItemClassName('incisionLevel')}
+                    help={getFormItemHelp('incisionLevel')}
+                    validateStatus={getFormItemStatus('incisionLevel') as any}
                   >
                     <Select placeholder="请选择">
                       <Option value="Ⅰ">Ⅰ类（清洁切口）</Option>
@@ -519,7 +629,13 @@ const HomePageFill: React.FC = () => {
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={12} md={8}>
-                  <Form.Item label="切口愈合" name="incisionHealing">
+                  <Form.Item
+                    label="切口愈合"
+                    name="incisionHealing"
+                    className={getFormItemClassName('incisionHealing')}
+                    help={getFormItemHelp('incisionHealing')}
+                    validateStatus={getFormItemStatus('incisionHealing') as any}
+                  >
                     <Select placeholder="请选择">
                       <Option value="甲">甲级（优良）</Option>
                       <Option value="乙">乙级（欠佳）</Option>
@@ -532,6 +648,9 @@ const HomePageFill: React.FC = () => {
                     label="麻醉方式"
                     name="anesthesiaType"
                     rules={[{ required: requiredFields.includes('anesthesia_type'), message: '请输入麻醉方式' }]}
+                    className={getFormItemClassName('anesthesiaType')}
+                    help={getFormItemHelp('anesthesiaType')}
+                    validateStatus={getFormItemStatus('anesthesiaType') as any}
                   >
                     <Select
                       placeholder="请选择或输入"
@@ -570,7 +689,13 @@ const HomePageFill: React.FC = () => {
 
               <Row gutter={[16, 8]}>
                 <Col xs={24} sm={12} md={8}>
-                  <Form.Item label="失血量" name="bloodLoss">
+                  <Form.Item
+                    label="失血量"
+                    name="bloodLoss"
+                    className={getFormItemClassName('bloodLoss')}
+                    help={getFormItemHelp('bloodLoss')}
+                    validateStatus={getFormItemStatus('bloodLoss') as any}
+                  >
                     <InputNumber
                       min={0}
                       addonAfter="ml"
@@ -580,7 +705,13 @@ const HomePageFill: React.FC = () => {
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={12} md={8}>
-                  <Form.Item label="输血量" name="bloodTransfusion">
+                  <Form.Item
+                    label="输血量"
+                    name="bloodTransfusion"
+                    className={getFormItemClassName('bloodTransfusion')}
+                    help={getFormItemHelp('bloodTransfusion')}
+                    validateStatus={getFormItemStatus('bloodTransfusion') as any}
+                  >
                     <InputNumber
                       min={0}
                       addonAfter="ml"
@@ -600,7 +731,13 @@ const HomePageFill: React.FC = () => {
                   </Form.Item>
                 </Col>
                 <Col xs={24}>
-                  <Form.Item label="术中并发症" name="complications">
+                  <Form.Item
+                    label="术中并发症"
+                    name="complications"
+                    className={getFormItemClassName('complications')}
+                    help={getFormItemHelp('complications')}
+                    validateStatus={getFormItemStatus('complications') as any}
+                  >
                     <Select
                       mode="tags"
                       placeholder="选择或输入并发症，多个可添加"
@@ -635,12 +772,21 @@ const HomePageFill: React.FC = () => {
                     label="手术医生"
                     name="surgeon"
                     rules={[{ required: requiredFields.includes('surgeon'), message: '请输入手术医生姓名' }]}
+                    className={getFormItemClassName('surgeon')}
+                    help={getFormItemHelp('surgeon')}
+                    validateStatus={getFormItemStatus('surgeon') as any}
                   >
                     <Input placeholder="请输入" maxLength={32} />
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={12} md={8}>
-                  <Form.Item label="第一助手" name="assistant1">
+                  <Form.Item
+                    label="第一助手"
+                    name="assistant1"
+                    className={getFormItemClassName('assistant1')}
+                    help={getFormItemHelp('assistant1')}
+                    validateStatus={getFormItemStatus('assistant1') as any}
+                  >
                     <Input placeholder="请输入" maxLength={32} />
                   </Form.Item>
                 </Col>
@@ -654,6 +800,9 @@ const HomePageFill: React.FC = () => {
                     label="麻醉医生"
                     name="anesthesiologist"
                     rules={[{ required: requiredFields.includes('anesthesiologist'), message: '请输入麻醉医生姓名' }]}
+                    className={getFormItemClassName('anesthesiologist')}
+                    help={getFormItemHelp('anesthesiologist')}
+                    validateStatus={getFormItemStatus('anesthesiologist') as any}
                   >
                     <Input placeholder="请输入" maxLength={32} />
                   </Form.Item>
@@ -679,7 +828,13 @@ const HomePageFill: React.FC = () => {
 
               <Row gutter={[16, 8]}>
                 <Col xs={24} sm={12} md={8}>
-                  <Form.Item label="是否危重患者" name="criticalPatient">
+                  <Form.Item
+                    label="是否危重患者"
+                    name="criticalPatient"
+                    className={getFormItemClassName('criticalPatient')}
+                    help={getFormItemHelp('criticalPatient')}
+                    validateStatus={getFormItemStatus('criticalPatient') as any}
+                  >
                     <Radio.Group>
                       <Radio value={0}>否</Radio>
                       <Radio value={1}>是</Radio>
@@ -692,15 +847,25 @@ const HomePageFill: React.FC = () => {
         </Col>
 
         <Col xs={24} lg={7}>
-          <Card
-            style={{ marginBottom: 16 }}
-            title={
-              <Space>
-                <ClockCircleOutlined style={{ color: '#1677ff' }} />
-                <span>填写用时</span>
-              </Space>
-            }
-          >
+          <div className="quality-report-sticky">
+            {homeData && recId > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <QualityReportPanel
+                  recordId={recId}
+                  onViolationFieldsChange={handleViolationFieldsChange}
+                />
+              </div>
+            )}
+
+            <Card
+              style={{ marginBottom: 16 }}
+              title={
+                <Space>
+                  <ClockCircleOutlined style={{ color: '#1677ff' }} />
+                  <span>填写用时</span>
+                </Space>
+              }
+            >
             <div style={{ textAlign: 'center', padding: '8px 0 16px' }}>
               <div style={{ fontSize: 13, color: '#8c8c8c', marginBottom: 4 }}>
                 实际用时
@@ -926,6 +1091,7 @@ const HomePageFill: React.FC = () => {
               </Space>
             )}
           </div>
+          </div>
         </Col>
       </Row>
 
@@ -994,6 +1160,92 @@ const HomePageFill: React.FC = () => {
             title="所有必填项已填写完成"
             subTitle="提交后病案首页将进入审核流程，请确认信息无误"
           />
+        )}
+      </Modal>
+
+      <Modal
+        title={
+          <Space>
+            <SafetyCertificateOutlined style={{ color: '#ff4d4f' }} />
+            <span>质控校验不通过</span>
+          </Space>
+        }
+        open={showQcModal}
+        onCancel={() => setShowQcModal(false)}
+        width={720}
+        footer={
+          <Space>
+            <Button onClick={() => setShowQcModal(false)}>返回修改</Button>
+            <Button
+              type="primary"
+              danger
+              loading={submitting}
+              icon={<RocketOutlined />}
+              onClick={forceSubmitAfterQc}
+            >
+              强制提交
+            </Button>
+          </Space>
+        }
+      >
+        {qcCheckResult && (
+          <>
+            <Alert
+              type="error"
+              showIcon
+              icon={<CloseCircleOutlined />}
+              message={`质控校验发现 ${qcCheckResult.violations?.filter((v) => v.severity === 'ERROR').length || 0} 个错误，${qcCheckResult.violations?.filter((v) => v.severity === 'WARNING').length || 0} 个警告`}
+              description="请修复以下问题后再提交，或选择强制提交"
+              style={{ marginBottom: 16 }}
+            />
+
+            <div style={{ maxHeight: 400, overflow: 'auto' }}>
+              {qcCheckResult.violations?.map((v, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    padding: '10px 12px',
+                    marginBottom: 8,
+                    background: v.severity === 'ERROR' ? '#fff2f0' : '#fffbe6',
+                    borderRadius: 6,
+                    borderLeft: `4px solid ${v.severity === 'ERROR' ? '#ff4d4f' : '#faad14'}`,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                    {v.severity === 'ERROR' ? (
+                      <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
+                    ) : (
+                      <WarningOutlined style={{ color: '#faad14' }} />
+                    )}
+                    <Tag
+                      color={QcSeverityMap[v.severity]?.color || 'default'}
+                      style={{ fontSize: 11, padding: '0 6px', lineHeight: '18px', margin: 0 }}
+                    >
+                      {QcSeverityMap[v.severity]?.label}
+                    </Tag>
+                    <Tag
+                      color={QcCategoryMap[v.category]?.color || 'default'}
+                      style={{ fontSize: 11, padding: '0 6px', lineHeight: '18px', margin: 0 }}
+                    >
+                      {QcCategoryMap[v.category]?.label}
+                    </Tag>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{v.ruleCode}: {v.ruleName}</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: '#595959', marginBottom: 6 }}>{v.message}</div>
+                  {v.relatedFields && v.relatedFields.length > 0 && (
+                    <div>
+                      <span style={{ fontSize: 11, color: '#8c8c8c' }}>关联字段：</span>
+                      {v.relatedFields.map((f) => (
+                        <Tag key={f} style={{ fontSize: 10, margin: '0 2px' }} color="default">
+                          {HOME_PAGE_FIELD_LABEL_MAP[f] || f}
+                        </Tag>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </Modal>
     </div>

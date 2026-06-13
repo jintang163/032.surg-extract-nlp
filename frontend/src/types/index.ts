@@ -568,3 +568,60 @@ export const HOME_PAGE_FIELD_LABEL_MAP: Record<string, string> =
     acc[f.key] = f.label
     return acc
   }, {} as Record<string, string>)
+
+export interface QcViolation {
+  ruleCode: string
+  ruleName: string
+  category: 'COMPLETENESS' | 'LOGIC_CONSISTENCY'
+  severity: 'ERROR' | 'WARNING'
+  message: string
+  relatedFields: string[]
+}
+
+export interface QcCheckResult {
+  violations: QcViolation[]
+  totalChecks: number
+  passedChecks: number
+  failedChecks: number
+  passed: boolean
+  passRate: number
+}
+
+export interface QcFieldCheck {
+  fieldName: string
+  fieldLabel: string
+  filled: boolean
+  required: boolean
+  valid: boolean
+  issue?: string
+}
+
+export interface QcScorecard {
+  recordId: number
+  recordNo: string
+  patientName: string
+  surgeryName: string
+  completenessScore: number
+  logicConsistencyScore: number
+  overallScore: number
+  grade: string
+  fieldChecks: QcFieldCheck[]
+  violations: QcViolation[]
+  totalFields: number
+  filledFields: number
+  requiredFields: number
+  requiredFilled: number
+  logicRuleCount: number
+  logicPassed: number
+  logicFailed: number
+}
+
+export const QcSeverityMap: Record<string, { label: string; color: string }> = {
+  ERROR: { label: '错误', color: 'red' },
+  WARNING: { label: '警告', color: 'orange' },
+}
+
+export const QcCategoryMap: Record<string, { label: string; color: string }> = {
+  COMPLETENESS: { label: '完整性', color: 'blue' },
+  LOGIC_CONSISTENCY: { label: '逻辑一致性', color: 'purple' },
+}

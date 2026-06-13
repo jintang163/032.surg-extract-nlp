@@ -26,6 +26,7 @@
         <poi.version>5.2.5</poi.version>
         <pdfbox.version>3.0.1</pdfbox.version>
         <neo4j.version>2023.0.0</neo4j.version>
+        <drools.version>8.44.0.Final</drools.version>
     </properties>
 
     <dependencies>
@@ -131,6 +132,27 @@
             <groupId>com.github.houbb</groupId>
             <artifactId>pinyin</artifactId>
             <version>0.4.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.drools</groupId>
+            <artifactId>drools-core</artifactId>
+            <version>${drools.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.drools</groupId>
+            <artifactId>drools-compiler</artifactId>
+            <version>${drools.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.drools</groupId>
+            <artifactId>drools-mvel</artifactId>
+            <version>${drools.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.drools</groupId>
+            <artifactId>drools-decisiontables</artifactId>
+            <version>${drools.version}</version>
         </dependency>
 
         <dependency>

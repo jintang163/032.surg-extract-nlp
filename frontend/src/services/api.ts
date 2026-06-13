@@ -381,3 +381,17 @@ export const termApi = {
     recordId?: number
   }) => http.get<any>('/medical-term/mapping-log', { params }),
 }
+
+export const qcApi = {
+  validate: (recordId: number) =>
+    http.post<any>(`/qc/validate/${recordId}`),
+
+  validateForm: (formData: any) =>
+    http.post<any>('/qc/validate-form', formData),
+
+  getScorecard: (recordId: number) =>
+    http.get<any>(`/qc/scorecard/${recordId}`),
+
+  exportReport: (recordId: number) =>
+    http.get(`/qc/export/${recordId}`, { responseType: 'blob' }),
+}
