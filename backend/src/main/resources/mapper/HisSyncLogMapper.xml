@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.surg.extract.mapper.HisSyncLogMapper">
+
+    <resultMap id="BaseResultMap" type="com.surg.extract.entity.HisSyncLog">
+        <id column="id" property="id"/>
+        <result column="record_id" property="recordId"/>
+        <result column="sync_type" property="syncType"/>
+        <result column="sync_direction" property="syncDirection"/>
+        <result column="sync_status" property="syncStatus"/>
+        <result column="sync_data" property="syncData"/>
+        <result column="response_data" property="responseData"/>
+        <result column="error_message" property="errorMessage"/>
+        <result column="retry_count" property="retryCount"/>
+        <result column="sync_start_time" property="syncStartTime"/>
+        <result column="sync_end_time" property="syncEndTime"/>
+        <result column="duration" property="duration"/>
+        <result column="created_user_id" property="createdUserId"/>
+        <result column="created_user_name" property="createdUserName"/>
+        <result column="created_time" property="createdTime"/>
+        <result column="updated_time" property="updatedTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <select id="selectByRecordId" resultMap="BaseResultMap">
+        SELECT * FROM his_sync_log
+        WHERE record_id = #{recordId} AND deleted = 0
+        ORDER BY created_time DESC
+    </select>
+
+    <select id="selectLatestByRecordId" resultMap="BaseResultMap">
+        SELECT * FROM his_sync_log
+        WHERE record_id = #{recordId} AND deleted = 0
+        ORDER BY created_time DESC
+        LIMIT 1
+    </select>
+
+</mapper>

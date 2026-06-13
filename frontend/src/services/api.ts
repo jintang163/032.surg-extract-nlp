@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import { message, Modal } from 'antd'
-import type { Result } from '@/types'
+import type { Result, HisSyncLog } from '@/types'
 
 const TOKEN_KEY = 'surg_extract_token'
 const baseURL = '/api'
@@ -394,4 +394,17 @@ export const qcApi = {
 
   exportReport: (recordId: number) =>
     http.get(`/qc/export/${recordId}`, { responseType: 'blob' }),
+}
+
+export const hisSyncApi = {
+  syncToHis: (recordId: number) => http.post(`/his-sync/sync/${recordId}`),
+  pullFromHis: (recordId: number, hospitalNo: string) =>
+    http.post(`/his-sync/pull/${recordId}?hospitalNo=${encodeURIComponent(hospitalNo)}`),
+  rollback: (recordId: number) => http.post(`/his-sync/rollback/${recordId}`),
+  getLogs: (recordId: number) => http.get<HisSyncLog[]>(`/his-sync/logs/${recordId}`),
+  getLatestLog: (recordId: number) => http.get<HisSyncLog>(`/his-sync/logs/latest/${recordId}`),
+  getStatus: (recordId: number) =>
+    http.get<{ hisEnabled: boolean; latestLog: HisSyncLog; synced: boolean }>(`/his-sync/status/${recordId}`),
+  triggerBilling: (recordId: number) => http.post(`/his-sync/billing/${recordId}`),
+  checkEnabled: () => http.get<{ enabled: boolean }>('/his-sync/enabled'),
 }

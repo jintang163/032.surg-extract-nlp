@@ -53,6 +53,7 @@ import { homePageApi, recordApi, qcApi } from '@/services/api'
 import type { MedicalRecordHome, FieldMapping, SurgeryRecord, QcCheckResult, QcViolation } from '@/types'
 import { HomePageStatusMap, QcSeverityMap, QcCategoryMap, HOME_PAGE_FIELD_LABEL_MAP } from '@/types'
 import QualityReportPanel from '@/components/QualityReportPanel'
+import HisSyncPanel from '@/components/HisSyncPanel'
 import dayjs from 'dayjs'
 
 const { RangePicker } = DatePicker
@@ -917,6 +918,16 @@ const HomePageFill: React.FC = () => {
                   loading={qcValidating}
                   onViolationFieldsChange={handleViolationFieldsChange}
                   onRefresh={validateFormQc}
+                />
+              </div>
+            )}
+
+            {homeData && recId > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <HisSyncPanel
+                  recordId={recId}
+                  hospitalNo={homeData.hospitalNo}
+                  onSyncSuccess={loadData}
                 />
               </div>
             )}

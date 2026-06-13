@@ -627,3 +627,40 @@ export const QcCategoryMap: Record<string, { label: string; color: string }> = {
   COMPLETENESS: { label: '完整性', color: 'blue' },
   LOGIC_CONSISTENCY: { label: '逻辑一致性', color: 'purple' },
 }
+
+export interface HisSyncLog {
+  id: number
+  recordId: number
+  syncType: string
+  syncDirection: 'TO_HIS' | 'FROM_HIS'
+  syncStatus: 'SUCCESS' | 'FAILED' | 'SKIPPED' | 'PENDING'
+  syncData?: string
+  responseData?: string
+  errorMessage?: string
+  retryCount?: number
+  syncStartTime?: string
+  syncEndTime?: string
+  duration?: number
+  createdUserId?: number
+  createdUserName?: string
+  createdTime?: string
+  updatedTime?: string
+}
+
+export const SyncTypeMap: Record<string, { label: string; color: string }> = {
+  HOME_PAGE: { label: '病案首页', color: 'blue' },
+  ROLLBACK: { label: '回滚', color: 'orange' },
+  BILLING: { label: '计费', color: 'green' },
+}
+
+export const SyncDirectionMap: Record<string, { label: string; color: string }> = {
+  TO_HIS: { label: '写入HIS', color: 'geekblue' },
+  FROM_HIS: { label: '从HIS读取', color: 'purple' },
+}
+
+export const SyncStatusMap: Record<string, { label: string; color: string }> = {
+  SUCCESS: { label: '成功', color: 'success' },
+  FAILED: { label: '失败', color: 'error' },
+  SKIPPED: { label: '跳过', color: 'default' },
+  PENDING: { label: '处理中', color: 'processing' },
+}
