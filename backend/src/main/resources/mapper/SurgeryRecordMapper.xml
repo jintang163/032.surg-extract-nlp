@@ -107,4 +107,18 @@
         WHERE id = #{id}
     </update>
 
+    <select id="selectRecentCompletedByDepartment" resultMap="BaseResultMap">
+        SELECT id, department, upload_user_id, original_file_name, template_id, upload_time, process_status
+        FROM surgery_record
+        WHERE deleted = 0
+          AND upload_time &gt;= #{fromTime}
+          AND process_status IN ('NER_DONE', 'COMPLETED')
+          AND template_id IS NOT NULL
+        <if test="department != null and department != ''">
+            AND department = #{department}
+        </if>
+        ORDER BY upload_time DESC
+        LIMIT 500
+    </select>
+
 </mapper>

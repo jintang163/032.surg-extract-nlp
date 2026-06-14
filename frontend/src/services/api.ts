@@ -518,3 +518,11 @@ export const caseCompareApi = {
   getIndexStatus: () =>
     http.get<any>('/case-compare/index/status'),
 }
+
+export const nextStepApi = {
+  getRecommendations: (recordId: number, userId?: number) =>
+    http.get<any[]>(`/next-step/${recordId}/recommend`, { params: { userId } }),
+
+  generateDraft: (recordId: number, templateId: number) =>
+    http.post<any>(`/next-step/${recordId}/generate/${templateId}`),
+}

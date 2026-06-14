@@ -47,6 +47,7 @@ import type { SurgeryRecord, SurgeryEntity, EntityType, ProcessStatus, SurgeryTe
 import { ProcessStatusMap, EntityTypeLabelMap, SourceMap } from '@/types'
 import dayjs from 'dayjs'
 import CaseComparePanel from '@/components/CaseComparePanel'
+import NextStepRecommendPanel from '@/components/NextStepRecommendPanel'
 
 const { TextArea } = Input
 const { Title, Text } = Typography
@@ -863,6 +864,19 @@ const RecordDetail: React.FC = () => {
           }}
           onEntitiesAdopted={(updated) => {
             setEntities(updated)
+          }}
+        />
+      )}
+
+      {(record?.processStatus === 'NER_DONE' || record?.processStatus === 'COMPLETED') && (
+        <NextStepRecommendPanel
+          recordId={recordId}
+          processStatus={record?.processStatus}
+          userId={record?.uploadUserId}
+          onDraftGenerated={(res) => {
+            if (res.templateId != null) {
+              setRecord((r) => (r ? { ...r, templateId: res.templateId } : r))
+            }
           }}
         />
       )}

@@ -35,4 +35,9 @@ public interface SurgeryRecordMapper extends BaseMapper<SurgeryRecord> {
     Integer updateNerTime(@Param("id") Long id, @Param("startTime") LocalDateTime startTime, @Param("endTime") LocalDateTime endTime);
 
     Integer updateOcrTime(@Param("id") Long id, @Param("startTime") LocalDateTime startTime, @Param("endTime") LocalDateTime endTime);
+
+    List<SurgeryRecord> selectRecentCompletedByDepartment(
+            @Param("department") String department,
+            @Param("fromTime") LocalDateTime fromTime
+    );
 }

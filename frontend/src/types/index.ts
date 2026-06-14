@@ -976,3 +976,34 @@ export interface CaseFullAnalysis {
   similarCases: SimilarCaseResult[]
   stats: CaseStatsAnalysis
 }
+
+export interface NextStepRecommend {
+  templateId: number
+  templateCode?: string
+  templateName: string
+  documentType: string
+  description?: string
+  tags?: string[]
+  department?: string
+  surgeryType?: string
+  useCount?: number
+  isDefault?: boolean
+  score: number
+  collaborativeScore: number
+  contentScore: number
+  popularityScore: number
+  rank: number
+  placeholdersCount: number
+  recommendedReason: string
+  expectedDurationMinutes?: number
+}
+
+export interface GeneratedDraftResult {
+  recordId: number
+  templateId: number
+  templateName: string
+  documentType: string
+  draftPreview: string
+  draftLength: number
+  message: string
+}
