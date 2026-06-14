@@ -19,6 +19,12 @@ import type {
   ExportFieldConfig,
   StandardHomePage,
   FhirBundle,
+  QualityBenchmark,
+  QualityBenchmarkCreateForm,
+  IndicatorDeviation,
+  DepartmentRanking,
+  QualityRadarData,
+  QualityBenchmarkDashboard,
 } from '@/types'
 
 const TOKEN_KEY = 'surg_extract_token'
@@ -730,4 +736,80 @@ export const exportApi = {
 
   getFhirHomePage: (recordId: number) =>
     http.get<FhirBundle>(`/export/standard/fhir/${recordId}`),
+}
+
+export const qualityBenchmarkApi = {
+  getDashboard: (params?: {
+    startDate?: string
+    endDate?: string
+    department?: string
+    benchmarkYear?: number
+  }) =>
+    http.get<QualityBenchmarkDashboard>('/quality-benchmark/dashboard', { params }),
+
+  listBenchmarks: (params?: {
+    pageNum?: number
+    pageSize?: number
+    indicatorCategory?: string
+    department?: string
+    enabled?: number
+    benchmarkYear?: number
+    region?: string
+  }) =>
+    http.get<PageResult<QualityBenchmark>>('/quality-benchmark/benchmarks', { params }),
+
+  listAllBenchmarks: (params?: {
+    indicatorCategory?: string
+    department?: string
+    enabled?: number
+    benchmarkYear?: number
+    region?: string
+  }) =>
+    http.get<QualityBenchmark[]>('/quality-benchmark/benchmarks/all', { params }),
+
+  getBenchmark: (id: number) =>
+    http.get<QualityBenchmark>(`/quality-benchmark/benchmarks/${id}`),
+
+  createBenchmark: (data: QualityBenchmarkCreateForm) =>
+    http.post<QualityBenchmark>('/quality-benchmark/benchmarks', data),
+
+  updateBenchmark: (id: number, data: QualityBenchmarkCreateForm) =>
+    http.put<QualityBenchmark>(`/quality-benchmark/benchmarks/${id}`, data),
+
+  deleteBenchmark: (id: number) =>
+    http.delete<void>(`/quality-benchmark/benchmarks/${id}`),
+
+  getDeviations: (params?: {
+    department?: string
+    startDate?: string
+    endDate?: string
+    benchmarkYear?: number
+  }) =>
+    http.get<IndicatorDeviation[]>('/quality-benchmark/deviations', { params }),
+
+  getDepartmentRankings: (params?: {
+    startDate?: string
+    endDate?: string
+    benchmarkYear?: number
+    indicatorCategory?: string
+  }) =>
+    http.get<DepartmentRanking[]>('/quality-benchmark/department-rankings', { params }),
+
+  getRadarChartData: (params?: {
+    departments?: string[]
+    startDate?: string
+    endDate?: string
+    benchmarkYear?: number
+    indicatorCategory?: string
+  }) =>
+    http.get<QualityRadarData>('/quality-benchmark/radar-chart', { params }),
+
+  initDefaultBenchmarks: () =>
+    http.post<void>('/quality-benchmark/init-defaults'),
+
+  getIndicatorCategories: () =>
+    http.get<{ code: string; label: string }[]>('/quality-benchmark/indicator-categories'),
+
+  getDirections: () =>
+    http.get<{ code: string; label: string }[]>('/quality-benchmark/directions'),
 }

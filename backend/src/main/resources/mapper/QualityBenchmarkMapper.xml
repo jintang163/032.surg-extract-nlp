@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.surg.extract.mapper.QualityBenchmarkMapper">
+
+    <resultMap id="BaseResultMap" type="com.surg.extract.entity.QualityBenchmark">
+        <id column="id" property="id"/>
+        <result column="indicator_code" property="indicatorCode"/>
+        <result column="indicator_name" property="indicatorName"/>
+        <result column="indicator_category" property="indicatorCategory"/>
+        <result column="unit" property="unit"/>
+        <result column="benchmark_value" property="benchmarkValue"/>
+        <result column="warning_threshold" property="warningThreshold"/>
+        <result column="critical_threshold" property="criticalThreshold"/>
+        <result column="direction" property="direction"/>
+        <result column="source" property="source"/>
+        <result column="region" property="region"/>
+        <result column="department" property="department"/>
+        <result column="benchmark_year" property="benchmarkYear"/>
+        <result column="benchmark_quarter" property="benchmarkQuarter"/>
+        <result column="description" property="description"/>
+        <result column="sort_order" property="sortOrder"/>
+        <result column="enabled" property="enabled"/>
+        <result column="create_user_id" property="createUserId"/>
+        <result column="create_user_name" property="createUserName"/>
+        <result column="created_time" property="createdTime"/>
+        <result column="updated_time" property="updatedTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, indicator_code, indicator_name, indicator_category, unit,
+        benchmark_value, warning_threshold, critical_threshold, direction,
+        source, region, department, benchmark_year, benchmark_quarter,
+        description, sort_order, enabled, create_user_id, create_user_name,
+        created_time, updated_time, deleted
+    </sql>
+
+    <select id="selectByConditions" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM quality_benchmark
+        WHERE deleted = 0
+        <if test="indicatorCategory != null and indicatorCategory != ''">
+            AND indicator_category = #{indicatorCategory}
+        </if>
+        <if test="department != null and department != ''">
+            AND (department = #{department} OR department = 'ALL')
+        </if>
+        <if test="enabled != null">
+            AND enabled = #{enabled}
+        </if>
+        <if test="benchmarkYear != null">
+            AND benchmark_year = #{benchmarkYear}
+        </if>
+        <if test="region != null and region != ''">
+            AND region = #{region}
+        </if>
+        ORDER BY COALESCE(sort_order, 999) ASC, id ASC
+    </select>
+
+    <select id="selectPageByConditions" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM quality_benchmark
+        WHERE deleted = 0
+        <if test="indicatorCategory != null and indicatorCategory != ''">
+            AND indicator_category = #{indicatorCategory}
+        </if>
+        <if test="department != null and department != ''">
+            AND (department = #{department} OR department = 'ALL')
+        </if>
+        <if test="enabled != null">
+            AND enabled = #{enabled}
+        </if>
+        <if test="benchmarkYear != null">
+            AND benchmark_year = #{benchmarkYear}
+        </if>
+        <if test="region != null and region != ''">
+            AND region = #{region}
+        </if>
+        ORDER BY COALESCE(sort_order, 999) ASC, id ASC
+    </select>
+
+    <select id="selectByCodeAndDept" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM quality_benchmark
+        WHERE deleted = 0
+          AND indicator_code = #{indicatorCode}
+          AND benchmark_year = #{benchmarkYear}
+        <if test="department != null and department != ''">
+            AND (department = #{department} OR department = 'ALL')
+        </if>
+        ORDER BY CASE WHEN department = #{department} THEN 0 ELSE 1 END
+        LIMIT 1
+    </select>
+
+</mapper>

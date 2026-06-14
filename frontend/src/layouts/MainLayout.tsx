@@ -18,6 +18,7 @@ import {
   BarChartOutlined,
   InboxOutlined,
   ThunderboltOutlined,
+  RadarChartOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
@@ -47,6 +48,12 @@ const MainLayout: React.FC = () => {
       icon: <SafetyCertificateOutlined />,
       label: '数据质控中心',
       onClick: () => navigate('/quality-control'),
+    },
+    {
+      key: '/quality-benchmark',
+      icon: <RadarChartOutlined />,
+      label: '跨院区质控基准',
+      onClick: () => navigate('/quality-benchmark'),
     },
     {
       key: '/analytics',
@@ -110,6 +117,7 @@ const MainLayout: React.FC = () => {
     if (path.startsWith('/voice')) return '/voice'
     if (path.startsWith('/medical-term')) return '/medical-term'
     if (path.startsWith('/quality-control')) return '/quality-control'
+    if (path.startsWith('/quality-benchmark')) return '/quality-benchmark'
     if (path.startsWith('/analytics')) return '/analytics'
     if (path.startsWith('/feedback')) return '/feedback'
     if (path.startsWith('/export-templates')) return '/export-templates'

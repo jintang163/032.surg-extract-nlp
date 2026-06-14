@@ -1541,3 +1541,131 @@ export interface FhirBundle {
   timestamp?: string
   entry?: FhirBundleEntry[]
 }
+
+export type IndicatorCategory = 'EFFICIENCY' | 'SAFETY' | 'COST' | 'QUALITY' | 'CLINICAL'
+
+export const IndicatorCategoryMap: Record<IndicatorCategory, string> = {
+  EFFICIENCY: '效率指标',
+  SAFETY: '安全指标',
+  COST: '费用指标',
+  QUALITY: '质量指标',
+  CLINICAL: '临床指标',
+}
+
+export type BenchmarkDirection = 'LOWER_BETTER' | 'HIGHER_BETTER' | 'RANGE'
+
+export const BenchmarkDirectionMap: Record<BenchmarkDirection, string> = {
+  LOWER_BETTER: '越低越好',
+  HIGHER_BETTER: '越高越好',
+  RANGE: '范围适宜',
+}
+
+export type DeviationLevel = 'PASS' | 'WARNING' | 'CRITICAL'
+
+export const DeviationLevelMap: Record<DeviationLevel, string> = {
+  PASS: '达标',
+  WARNING: '预警',
+  CRITICAL: '严重偏离',
+}
+
+export const DeviationLevelColorMap: Record<DeviationLevel, string> = {
+  PASS: '#52c41a',
+  WARNING: '#faad14',
+  CRITICAL: '#ff4d4f',
+}
+
+export interface QualityBenchmark {
+  id: number
+  indicatorCode: string
+  indicatorName: string
+  indicatorCategory: IndicatorCategory
+  unit?: string
+  benchmarkValue: number
+  warningThreshold?: number
+  criticalThreshold?: number
+  direction: BenchmarkDirection
+  directionLabel?: string
+  source?: string
+  region?: string
+  department?: string
+  benchmarkYear: number
+  benchmarkQuarter?: number
+  description?: string
+  sortOrder?: number
+  enabled?: number
+  createUserName?: string
+  createdTime?: string
+  updatedTime?: string
+}
+
+export interface QualityBenchmarkCreateForm {
+  id?: number
+  indicatorCode: string
+  indicatorName: string
+  indicatorCategory: IndicatorCategory
+  unit?: string
+  benchmarkValue: number
+  warningThreshold?: number
+  criticalThreshold?: number
+  direction: BenchmarkDirection
+  source?: string
+  region?: string
+  department?: string
+  benchmarkYear: number
+  benchmarkQuarter?: number
+  description?: string
+  sortOrder?: number
+  enabled?: number
+}
+
+export interface IndicatorDeviation {
+  indicatorCode: string
+  indicatorName: string
+  indicatorCategory: IndicatorCategory
+  unit?: string
+  actualValue: number
+  benchmarkValue: number
+  warningThreshold?: number
+  criticalThreshold?: number
+  direction: BenchmarkDirection
+  deviationValue: number
+  deviationRate: number
+  deviationLevel: DeviationLevel
+  deviationLevelLabel: string
+  department?: string
+  dataCount: number
+}
+
+export interface DepartmentRanking {
+  department: string
+  totalIndicators: number
+  passedIndicators: number
+  warningIndicators: number
+  criticalIndicators: number
+  passRate: number
+  compositeScore: number
+  ranking: number
+  indicatorDeviations: IndicatorDeviation[]
+}
+
+export interface QualityRadarSeries {
+  name: string
+  values: number[]
+}
+
+export interface QualityRadarData {
+  indicatorNames: string[]
+  series: QualityRadarSeries[]
+}
+
+export interface QualityBenchmarkDashboard {
+  totalIndicators: number
+  passedCount: number
+  warningCount: number
+  criticalCount: number
+  overallPassRate: number
+  compositeScore: number
+  evaluatedDepartments: number
+  topDeviations: IndicatorDeviation[]
+  departmentRankings: DepartmentRanking[]
+}
