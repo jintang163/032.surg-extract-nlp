@@ -121,4 +121,218 @@
         LIMIT 500
     </select>
 
+    <select id="selectOverviewStats" resultType="java.util.Map">
+        SELECT
+            COUNT(*) AS totalRecords,
+            SUM(CASE WHEN process_status IN ('NER_DONE', 'COMPLETED') THEN 1 ELSE 0 END) AS extractedRecords,
+            COUNT(DISTINCT department) AS totalDepartments,
+            COUNT(DISTINCT upload_user_id) AS totalSurgeons,
+            SUM(CASE WHEN manual_duration_est IS NOT NULL AND manual_duration_est &gt; 0
+                THEN manual_duration_est ELSE 0 END) AS totalManualDuration,
+            SUM(CASE WHEN fill_duration IS NOT NULL THEN fill_duration ELSE 0 END) AS totalActualDuration
+        FROM surgery_record
+        WHERE deleted = 0
+        <if test="startDate != null">
+            AND DATE(upload_time) &gt;= #{startDate}
+        </if>
+        <if test="endDate != null">
+            AND DATE(upload_time) &lt;= #{endDate}
+        </if>
+        <if test="department != null and department != ''">
+            AND department = #{department}
+        </if>
+    </select>
+
+    <select id="selectCoverageTrend" resultType="com.surg.extract.dto.CoverageTrendDTO">
+        SELECT
+            DATE(upload_time) AS date,
+            <choose>
+                <when test="groupBy == 'department'">department</when>
+                <otherwise>NULL</otherwise>
+            </choose> AS department,
+            COUNT(*) AS totalRecords,
+            SUM(CASE WHEN process_status IN ('NER_DONE', 'COMPLETED') THEN 1 ELSE 0 END) AS extractedRecords,
+            ROUND(
+                SUM(CASE WHEN process_status IN ('NER_DONE', 'COMPLETED') THEN 1 ELSE 0 END) * 100.0 /
+                NULLIF(COUNT(*), 0), 2
+            ) AS coverageRate
+        FROM surgery_record
+        WHERE deleted = 0
+        <if test="startDate != null">
+            AND DATE(upload_time) &gt;= #{startDate}
+        </if>
+        <if test="endDate != null">
+            AND DATE(upload_time) &lt;= #{endDate}
+        </if>
+        <if test="department != null and department != ''">
+            AND department = #{department}
+        </if>
+        GROUP BY DATE(upload_time)
+        <if test="groupBy == 'department'">
+            , department
+        </if>
+        ORDER BY date
+    </select>
+
+    <select id="selectEfficiencyTrend" resultType="com.surg.extract.dto.EfficiencyTrendDTO">
+        SELECT
+            DATE(r.upload_time) AS date,
+            r.department AS department,
+            COALESCE(h.chief_surgeon, h.surgeon, r.upload_user_name) AS surgeon,
+            COUNT(*) AS recordCount,
+            AVG(CASE WHEN h.manual_duration_est IS NOT NULL AND h.manual_duration_est &gt; 0
+                THEN h.manual_duration_est ELSE NULL END) AS avgManualDuration,
+            AVG(CASE WHEN h.fill_duration IS NOT NULL THEN h.fill_duration ELSE NULL END) AS avgActualDuration,
+            ROUND(
+                (AVG(CASE WHEN h.manual_duration_est IS NOT NULL AND h.manual_duration_est &gt; 0
+                    THEN h.manual_duration_est ELSE 0 END) -
+                 AVG(CASE WHEN h.fill_duration IS NOT NULL THEN h.fill_duration ELSE 0 END)) * 100.0 /
+                NULLIF(AVG(CASE WHEN h.manual_duration_est IS NOT NULL AND h.manual_duration_est &gt; 0
+                    THEN h.manual_duration_est ELSE NULL END), 0), 2
+            ) AS timeSavedRate
+        FROM surgery_record r
+        LEFT JOIN medical_record_home h ON h.record_id = r.id AND h.deleted = 0
+        WHERE r.deleted = 0
+          AND h.fill_duration IS NOT NULL
+        <if test="startDate != null">
+            AND DATE(r.upload_time) &gt;= #{startDate}
+        </if>
+        <if test="endDate != null">
+            AND DATE(r.upload_time) &lt;= #{endDate}
+        </if>
+        <if test="department != null and department != ''">
+            AND r.department = #{department}
+        </if>
+        <if test="surgeon != null and surgeon != ''">
+            AND (h.chief_surgeon = #{surgeon} OR h.surgeon = #{surgeon})
+        </if>
+        GROUP BY DATE(r.upload_time)
+        <if test="groupBy == 'department'">
+            , r.department
+        </if>
+        <if test="groupBy == 'surgeon'">
+            , COALESCE(h.chief_surgeon, h.surgeon, r.upload_user_name)
+        </if>
+        HAVING avgManualDuration IS NOT NULL
+        ORDER BY date
+    </select>
+
+    <select id="selectDepartmentStats" resultType="com.surg.extract.dto.DepartmentStatsDTO">
+        SELECT
+            r.department AS department,
+            COUNT(*) AS totalRecords,
+            SUM(CASE WHEN r.process_status IN ('NER_DONE', 'COMPLETED') THEN 1 ELSE 0 END) AS extractedRecords,
+            ROUND(
+                SUM(CASE WHEN r.process_status IN ('NER_DONE', 'COMPLETED') THEN 1 ELSE 0 END) * 100.0 /
+                NULLIF(COUNT(*), 0), 2
+            ) AS coverageRate,
+            ROUND(
+                (AVG(CASE WHEN h.manual_duration_est IS NOT NULL AND h.manual_duration_est &gt; 0
+                    THEN h.manual_duration_est ELSE 0 END) -
+                 AVG(CASE WHEN h.fill_duration IS NOT NULL THEN h.fill_duration ELSE 0 END)) * 100.0 /
+                NULLIF(AVG(CASE WHEN h.manual_duration_est IS NOT NULL AND h.manual_duration_est &gt; 0
+                    THEN h.manual_duration_est ELSE NULL END), 0), 2
+            ) AS avgTimeSavedRate
+        FROM surgery_record r
+        LEFT JOIN medical_record_home h ON h.record_id = r.id AND h.deleted = 0
+        WHERE r.deleted = 0
+          AND r.department IS NOT NULL
+        <if test="startDate != null">
+            AND DATE(r.upload_time) &gt;= #{startDate}
+        </if>
+        <if test="endDate != null">
+            AND DATE(r.upload_time) &lt;= #{endDate}
+        </if>
+        GROUP BY r.department
+        ORDER BY totalRecords DESC
+    </select>
+
+    <select id="selectSurgeonStats" resultType="com.surg.extract.dto.SurgeonStatsDTO">
+        SELECT
+            COALESCE(h.chief_surgeon, h.surgeon, r.upload_user_name) AS surgeon,
+            COUNT(*) AS recordCount,
+            ROUND(
+                (AVG(CASE WHEN h.manual_duration_est IS NOT NULL AND h.manual_duration_est &gt; 0
+                    THEN h.manual_duration_est ELSE 0 END) -
+                 AVG(CASE WHEN h.fill_duration IS NOT NULL THEN h.fill_duration ELSE 0 END)) * 100.0 /
+                NULLIF(AVG(CASE WHEN h.manual_duration_est IS NOT NULL AND h.manual_duration_est &gt; 0
+                    THEN h.manual_duration_est ELSE NULL END), 0), 2
+            ) AS avgTimeSavedRate,
+            ROUND(
+                SUM(CASE WHEN r.process_status IN ('NER_DONE', 'COMPLETED') THEN 1 ELSE 0 END) * 100.0 /
+                NULLIF(COUNT(*), 0), 2
+            ) AS coverageRate
+        FROM surgery_record r
+        LEFT JOIN medical_record_home h ON h.record_id = r.id AND h.deleted = 0
+        WHERE r.deleted = 0
+          AND COALESCE(h.chief_surgeon, h.surgeon, r.upload_user_name) IS NOT NULL
+        <if test="startDate != null">
+            AND DATE(r.upload_time) &gt;= #{startDate}
+        </if>
+        <if test="endDate != null">
+            AND DATE(r.upload_time) &lt;= #{endDate}
+        </if>
+        <if test="department != null and department != ''">
+            AND r.department = #{department}
+        </if>
+        GROUP BY COALESCE(h.chief_surgeon, h.surgeon, r.upload_user_name)
+        HAVING recordCount &gt;= 1
+        ORDER BY recordCount DESC
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <select id="selectSurgeryTypeStats" resultType="com.surg.extract.dto.SurgeryTypeStatsDTO">
+        SELECT
+            h.surgery_name AS surgeryName,
+            COUNT(*) AS recordCount,
+            ROUND(
+                SUM(CASE WHEN r.process_status IN ('NER_DONE', 'COMPLETED') THEN 1 ELSE 0 END) * 100.0 /
+                NULLIF(COUNT(*), 0), 2
+            ) AS coverageRate
+        FROM surgery_record r
+        LEFT JOIN medical_record_home h ON h.record_id = r.id AND h.deleted = 0
+        WHERE r.deleted = 0
+          AND h.surgery_name IS NOT NULL AND h.surgery_name != ''
+        <if test="startDate != null">
+            AND DATE(r.upload_time) &gt;= #{startDate}
+        </if>
+        <if test="endDate != null">
+            AND DATE(r.upload_time) &lt;= #{endDate}
+        </if>
+        <if test="department != null and department != ''">
+            AND r.department = #{department}
+        </if>
+        GROUP BY h.surgery_name
+        ORDER BY recordCount DESC
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <select id="selectSurgeryWordCloud" resultType="com.surg.extract.dto.SurgeryWordCloudDTO">
+        SELECT
+            h.surgery_name AS name,
+            COUNT(*) AS value
+        FROM surgery_record r
+        LEFT JOIN medical_record_home h ON h.record_id = r.id AND h.deleted = 0
+        WHERE r.deleted = 0
+          AND h.surgery_name IS NOT NULL AND h.surgery_name != ''
+        <if test="startDate != null">
+            AND DATE(r.upload_time) &gt;= #{startDate}
+        </if>
+        <if test="endDate != null">
+            AND DATE(r.upload_time) &lt;= #{endDate}
+        </if>
+        <if test="department != null and department != ''">
+            AND r.department = #{department}
+        </if>
+        GROUP BY h.surgery_name
+        ORDER BY value DESC
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
+    </select>
+
 </mapper>

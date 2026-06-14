@@ -24,4 +24,63 @@
         DELETE FROM surgery_entity WHERE record_id = #{recordId}
     </delete>
 
+    <select id="selectAccuracyTrend" resultType="com.surg.extract.dto.AccuracyTrendDTO">
+        SELECT
+            DATE(r.upload_time) AS date,
+            r.department AS department,
+            e.entity_type AS entityType,
+            COUNT(*) AS totalEntities,
+            SUM(CASE WHEN e.verified = 1 THEN 1 ELSE 0 END) AS verifiedEntities,
+            SUM(CASE WHEN e.confidence IS NOT NULL AND e.confidence &gt;= 0.8 THEN 1 ELSE 0 END) AS highConfidenceEntities,
+            ROUND(
+                (SUM(CASE WHEN e.verified = 1 OR (e.confidence IS NOT NULL AND e.confidence &gt;= 0.8) THEN 1 ELSE 0 END)) * 100.0 /
+                NULLIF(COUNT(*), 0), 2
+            ) AS accuracyRate
+        FROM surgery_entity e
+        INNER JOIN surgery_record r ON r.id = e.record_id AND r.deleted = 0
+        WHERE e.deleted = 0
+        <if test="startDate != null">
+            AND DATE(r.upload_time) &gt;= #{startDate}
+        </if>
+        <if test="endDate != null">
+            AND DATE(r.upload_time) &lt;= #{endDate}
+        </if>
+        <if test="department != null and department != ''">
+            AND r.department = #{department}
+        </if>
+        <if test="entityType != null and entityType != ''">
+            AND e.entity_type = #{entityType}
+        </if>
+        GROUP BY DATE(r.upload_time)
+        <if test="groupBy == 'entityType'">
+            , e.entity_type
+        </if>
+        <if test="groupBy == 'department'">
+            , r.department
+        </if>
+        ORDER BY date
+    </select>
+
+    <select id="selectLowConfidenceDistribution" resultType="com.surg.extract.dto.LowConfidenceDistributionDTO">
+        SELECT
+            e.entity_type AS entityType,
+            COUNT(*) AS count,
+            ROUND(AVG(CASE WHEN e.confidence IS NOT NULL THEN e.confidence ELSE 0 END), 4) AS avgConfidence
+        FROM surgery_entity e
+        INNER JOIN surgery_record r ON r.id = e.record_id AND r.deleted = 0
+        WHERE e.deleted = 0
+          AND (e.confidence IS NULL OR e.confidence &lt; #{confidenceThreshold})
+        <if test="startDate != null">
+            AND DATE(r.upload_time) &gt;= #{startDate}
+        </if>
+        <if test="endDate != null">
+            AND DATE(r.upload_time) &lt;= #{endDate}
+        </if>
+        <if test="department != null and department != ''">
+            AND r.department = #{department}
+        </if>
+        GROUP BY e.entity_type
+        ORDER BY count DESC
+    </select>
+
 </mapper>

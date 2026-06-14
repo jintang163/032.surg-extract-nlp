@@ -1007,3 +1007,88 @@ export interface GeneratedDraftResult {
   draftLength: number
   message: string
 }
+
+export interface CoverageTrend {
+  date: string
+  department?: string
+  totalRecords: number
+  extractedRecords: number
+  coverageRate: number
+}
+
+export interface EfficiencyTrend {
+  date: string
+  department?: string
+  surgeon?: string
+  avgManualDuration: number
+  avgActualDuration: number
+  timeSavedRate: number
+  recordCount: number
+}
+
+export interface AccuracyTrend {
+  date: string
+  department?: string
+  entityType?: string
+  totalEntities: number
+  verifiedEntities: number
+  highConfidenceEntities: number
+  accuracyRate: number
+}
+
+export interface SurgeryWordCloudItem {
+  name: string
+  value: number
+}
+
+export interface LowConfidenceDistribution {
+  entityType: string
+  entityLabel: string
+  count: number
+  avgConfidence: number
+}
+
+export interface DepartmentStats {
+  department: string
+  totalRecords: number
+  extractedRecords: number
+  coverageRate: number
+  avgTimeSavedRate: number
+  avgAccuracyRate?: number
+}
+
+export interface AnalyticsOverview {
+  totalRecords: number
+  extractedRecords: number
+  overallCoverageRate: number
+  overallTimeSavedRate: number
+  overallAccuracyRate: number
+  totalDepartments: number
+  totalSurgeons: number
+}
+
+export interface SurgeonStats {
+  surgeon: string
+  recordCount: number
+  avgTimeSavedRate: number
+  coverageRate: number
+}
+
+export interface SurgeryTypeStats {
+  surgeryName: string
+  recordCount: number
+  coverageRate: number
+  avgAccuracyRate?: number
+}
+
+export interface AnalyticsDashboardData {
+  overview: AnalyticsOverview
+  coverageTrend: CoverageTrend[]
+  efficiencyTrend: EfficiencyTrend[]
+  accuracyTrend: AccuracyTrend[]
+  departmentStats: DepartmentStats[]
+  surgeonStats: SurgeonStats[]
+  surgeryTypeStats: SurgeryTypeStats[]
+  surgeryWordCloud: SurgeryWordCloudItem[]
+  lowConfidenceDistribution: LowConfidenceDistribution[]
+}

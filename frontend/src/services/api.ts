@@ -526,3 +526,73 @@ export const nextStepApi = {
   generateDraft: (recordId: number, templateId: number) =>
     http.post<any>(`/next-step/${recordId}/generate/${templateId}`),
 }
+
+export const analyticsApi = {
+  getDashboard: (params?: {
+    startDate?: string
+    endDate?: string
+    department?: string
+  }) => http.get<any>('/analytics/dashboard', { params }),
+
+  getOverview: (params?: {
+    startDate?: string
+    endDate?: string
+    department?: string
+  }) => http.get<any>('/analytics/overview', { params }),
+
+  getCoverageTrend: (params?: {
+    startDate?: string
+    endDate?: string
+    department?: string
+    groupBy?: string
+  }) => http.get<any[]>('/analytics/trend/coverage', { params }),
+
+  getEfficiencyTrend: (params?: {
+    startDate?: string
+    endDate?: string
+    department?: string
+    surgeon?: string
+    groupBy?: string
+  }) => http.get<any[]>('/analytics/trend/efficiency', { params }),
+
+  getAccuracyTrend: (params?: {
+    startDate?: string
+    endDate?: string
+    department?: string
+    entityType?: string
+    groupBy?: string
+  }) => http.get<any[]>('/analytics/trend/accuracy', { params }),
+
+  getDepartmentStats: (params?: {
+    startDate?: string
+    endDate?: string
+  }) => http.get<any[]>('/analytics/department/stats', { params }),
+
+  getSurgeonStats: (params?: {
+    startDate?: string
+    endDate?: string
+    department?: string
+    limit?: number
+  }) => http.get<any[]>('/analytics/surgeon/stats', { params }),
+
+  getSurgeryTypeStats: (params?: {
+    startDate?: string
+    endDate?: string
+    department?: string
+    limit?: number
+  }) => http.get<any[]>('/analytics/surgery-type/stats', { params }),
+
+  getSurgeryWordCloud: (params?: {
+    startDate?: string
+    endDate?: string
+    department?: string
+    limit?: number
+  }) => http.get<any[]>('/analytics/surgery/word-cloud', { params }),
+
+  getLowConfidenceDistribution: (params?: {
+    startDate?: string
+    endDate?: string
+    department?: string
+    threshold?: number
+  }) => http.get<any[]>('/analytics/low-confidence/distribution', { params }),
+}

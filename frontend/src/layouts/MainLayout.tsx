@@ -14,6 +14,7 @@ import {
   ApiOutlined,
   SafetyCertificateOutlined,
   FileProtectOutlined,
+  BarChartOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
@@ -43,6 +44,12 @@ const MainLayout: React.FC = () => {
       icon: <SafetyCertificateOutlined />,
       label: '数据质控中心',
       onClick: () => navigate('/quality-control'),
+    },
+    {
+      key: '/analytics',
+      icon: <BarChartOutlined />,
+      label: '统计分析仪表盘',
+      onClick: () => navigate('/analytics'),
     },
     {
       key: '/voice',
@@ -82,6 +89,7 @@ const MainLayout: React.FC = () => {
     if (path.startsWith('/voice')) return '/voice'
     if (path.startsWith('/medical-term')) return '/medical-term'
     if (path.startsWith('/quality-control')) return '/quality-control'
+    if (path.startsWith('/analytics')) return '/analytics'
     if (path.startsWith('/qc-report-templates')) return '/qc-report-templates'
     return path
   }
