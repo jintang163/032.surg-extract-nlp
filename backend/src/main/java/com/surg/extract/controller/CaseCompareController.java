@@ -1,6 +1,7 @@
 package com.surg.extract.controller;
 
 import com.surg.extract.common.Result;
+import com.surg.extract.dto.AdoptTypicalValueRequestDTO;
 import com.surg.extract.dto.CaseStatsAnalysisDTO;
 import com.surg.extract.dto.SimilarCaseResultDTO;
 import com.surg.extract.dto.SimilarCaseSearchRequestDTO;
@@ -56,6 +57,16 @@ public class CaseCompareController {
         result.put("similarCases", similarCases);
         result.put("stats", stats);
         return Result.success(result);
+    }
+
+    @PostMapping("/{recordId}/adopt")
+    @Operation(summary = "采纳历史典型值并回写到抽取结果",
+            description = "将医生选择的典型值更新为该病例的抽取实体值，并自动触发ES索引刷新")
+    public Result<Map<String, Object>> adoptTypicalValue(
+            @PathVariable Long recordId,
+            @RequestBody AdoptTypicalValueRequestDTO request) {
+        Map<String, Object> res = caseCompareService.adoptTypicalValue(recordId, request);
+        return Result.success(res);
     }
 
     @PostMapping("/index/rebuild")

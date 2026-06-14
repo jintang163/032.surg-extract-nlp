@@ -503,6 +503,9 @@ export const caseCompareApi = {
   getFullAnalysis: (recordId: number, params: any) =>
     http.post<any>(`/case-compare/${recordId}/full-analysis`, params),
 
+  adoptTypicalValue: (recordId: number, params: any) =>
+    http.post<any>(`/case-compare/${recordId}/adopt`, params),
+
   rebuildIndex: () =>
     http.post<any>('/case-compare/index/rebuild'),
 

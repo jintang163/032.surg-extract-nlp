@@ -5,7 +5,9 @@ import co.elastic.clients.elasticsearch._types.aggregations.*;
 import co.elastic.clients.elasticsearch._types.query_dsl.*;
 import co.elastic.clients.json.JsonData;
 import com.surg.extract.config.ElasticsearchConfig;
+import com.surg.extract.dto.AdoptTypicalValueRequestDTO;
 import com.surg.extract.dto.CaseStatsAnalysisDTO;
+import com.surg.extract.dto.EntityUpdateDTO;
 import com.surg.extract.dto.SimilarCaseResultDTO;
 import com.surg.extract.dto.SimilarCaseSearchRequestDTO;
 import com.surg.extract.entity.MedicalRecordHome;
@@ -40,6 +42,8 @@ public class CaseCompareService {
     private final ElasticsearchConfig esConfig;
     private final SurgeryEntityMapper entityMapper;
     private final MedicalRecordHomeMapper homeMapper;
+    private final SurgeryRecordEsIndexService esIndexService;
+    private final SurgeryRecordService surgeryRecordService;
 
     private static final Map<String, String> NUMERIC_FIELD_UNITS = Map.of(
             "bloodLoss", "ml",
@@ -178,52 +182,97 @@ public class CaseCompareService {
         LocalDateTime fromTime = LocalDateTime.now().minus(timeRange, ChronoUnit.MONTHS);
         result.setTimeRangeDescription(String.format("过去%d个月", timeRange));
 
-        List<Query> filterClauses = new ArrayList<>();
-        List<Query> shouldClauses = new ArrayList<>();
+        Map<String, Aggregation> aggs = buildStatsAggregations();
 
-        filterClauses.add(RangeQuery.of(r -> r
+        List<Query> targetFilter = new ArrayList<>();
+        List<Query> targetShould = new ArrayList<>();
+        targetFilter.add(RangeQuery.of(r -> r
                 .field("uploadTime")
                 .gte(JsonData.of(fromTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)))
         )._toQuery());
-
         if (request.getExcludeRecordId() != null) {
             String excludeId = String.valueOf(request.getExcludeRecordId());
-            filterClauses.add(BoolQuery.of(b -> b
+            targetFilter.add(BoolQuery.of(b -> b
                     .mustNot(IdsQuery.of(i -> i.values(Collections.singletonList(excludeId)))._toQuery())
             )._toQuery());
         }
-
         if (StringUtils.hasText(request.getDepartment())) {
-            filterClauses.add(TermQuery.of(t -> t
-                    .field("department")
-                    .value(request.getDepartment())
-            )._toQuery());
+            targetFilter.add(TermQuery.of(t -> t.field("department").value(request.getDepartment()))._toQuery());
         }
-
         if (StringUtils.hasText(request.getSurgeryName())) {
-            shouldClauses.add(MatchQuery.of(m -> m
-                    .field("surgeryName")
-                    .query(request.getSurgeryName())
-                    .boost(5.0f)
-            )._toQuery());
-            shouldClauses.add(MatchPhraseQuery.of(m -> m
-                    .field("surgeryName")
-                    .query(request.getSurgeryName())
-                    .slop(2)
+            targetShould.add(MatchQuery.of(m -> m.field("surgeryName").query(request.getSurgeryName()).boost(5.0f))._toQuery());
+            targetShould.add(MatchPhraseQuery.of(m -> m.field("surgeryName").query(request.getSurgeryName()).slop(2))._toQuery());
+        }
+        if (StringUtils.hasText(request.getPreopDiagnosis())) {
+            targetShould.add(MatchQuery.of(m -> m.field("preopDiagnosis").query(request.getPreopDiagnosis()).boost(3.0f))._toQuery());
+        }
+        if (StringUtils.hasText(request.getPostopDiagnosis())) {
+            targetShould.add(MatchQuery.of(m -> m.field("postopDiagnosis").query(request.getPostopDiagnosis()).boost(3.0f))._toQuery());
+        }
+        BoolQuery.Builder targetBool = new BoolQuery.Builder().filter(targetFilter);
+        if (!targetShould.isEmpty()) targetBool.should(targetShould).minimumShouldMatch("1");
+
+        List<Query> deptFilter = new ArrayList<>();
+        deptFilter.add(RangeQuery.of(r -> r
+                .field("uploadTime")
+                .gte(JsonData.of(fromTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)))
+        )._toQuery());
+        if (request.getExcludeRecordId() != null) {
+            String excludeId = String.valueOf(request.getExcludeRecordId());
+            deptFilter.add(BoolQuery.of(b -> b
+                    .mustNot(IdsQuery.of(i -> i.values(Collections.singletonList(excludeId)))._toQuery())
             )._toQuery());
         }
-
-        BoolQuery.Builder boolBuilder = new BoolQuery.Builder().filter(filterClauses);
-        if (!shouldClauses.isEmpty()) {
-            boolBuilder.should(shouldClauses).minimumShouldMatch("1");
+        if (StringUtils.hasText(request.getDepartment())) {
+            deptFilter.add(TermQuery.of(t -> t.field("department").value(request.getDepartment()))._toQuery());
         }
+        Query deptQuery = new BoolQuery.Builder().filter(deptFilter).build()._toQuery();
 
+        try {
+            NativeQuery targetNative = NativeQuery.builder()
+                    .withQuery(targetBool.build()._toQuery())
+                    .withAggregations(aggs)
+                    .withMaxResults(0)
+                    .build();
+            SearchHits<com.surg.extract.es.document.SurgeryRecordDocument> targetHits =
+                    elasticsearchOperations.search(targetNative, com.surg.extract.es.document.SurgeryRecordDocument.class);
+            parseStatsResult(targetHits.getAggregations().aggregations(), result, false);
+
+            if (StringUtils.hasText(request.getDepartment())) {
+                NativeQuery deptNative = NativeQuery.builder()
+                        .withQuery(deptQuery)
+                        .withAggregations(aggs)
+                        .withMaxResults(0)
+                        .build();
+                SearchHits<com.surg.extract.es.document.SurgeryRecordDocument> deptHits =
+                        elasticsearchOperations.search(deptNative, com.surg.extract.es.document.SurgeryRecordDocument.class);
+                parseStatsResult(deptHits.getAggregations().aggregations(), result, true);
+            } else {
+                result.setDepartmentTotalCases(0L);
+                result.setDepartmentNumericStats(Collections.emptyMap());
+                result.setDepartmentCategoryStats(Collections.emptyMap());
+            }
+
+            result.setFieldComparisons(computeFieldComparisons(request, result));
+            return result;
+        } catch (Exception e) {
+            log.error("统计分析失败", e);
+            result.setTotalCases(0L);
+            result.setDepartmentTotalCases(0L);
+            result.setNumericStats(Collections.emptyMap());
+            result.setCategoryStats(Collections.emptyMap());
+            result.setDepartmentNumericStats(Collections.emptyMap());
+            result.setDepartmentCategoryStats(Collections.emptyMap());
+            result.setFieldComparisons(Collections.emptyMap());
+            return result;
+        }
+    }
+
+    private Map<String, Aggregation> buildStatsAggregations() {
         Map<String, Aggregation> aggs = new LinkedHashMap<>();
-
         aggs.put("total_count", ValueCountAggregation.of(v -> v.field("id"))._toAggregation());
-
         for (Map.Entry<String, String> field : NUMERIC_FIELD_LABELS.entrySet()) {
-            String esField = camelToSnake(field.getKey());
+            String esField = field.getKey();
             aggs.put(field.getKey() + "_stats", StatsAggregation.of(s -> s.field(esField))._toAggregation());
             aggs.put(field.getKey() + "_percentiles", PercentilesAggregation.of(p -> p
                     .field(esField)
@@ -231,116 +280,96 @@ public class CaseCompareService {
                     .keyed(true)
             )._toAggregation());
         }
-
         for (Map.Entry<String, String> field : CATEGORY_FIELD_LABELS.entrySet()) {
-            String esField = camelToSnake(field.getKey());
+            String esField = field.getKey();
             aggs.put(field.getKey() + "_terms", TermsAggregation.of(t -> t
                     .field(esField)
                     .size(10)
                     .minDocCount(1)
             )._toAggregation());
         }
+        return aggs;
+    }
 
-        Query query = boolBuilder.build()._toQuery();
-        NativeQuery nativeQuery = NativeQuery.builder()
-                .withQuery(query)
-                .withAggregations(aggs)
-                .withMaxResults(0)
-                .build();
+    private void parseStatsResult(Map<String, Aggregate> aggMap, CaseStatsAnalysisDTO result, boolean isDepartmentScope) {
+        long totalCases = 0L;
+        var totalCountAgg = aggMap.get("total_count");
+        if (totalCountAgg != null) {
+            totalCases = totalCountAgg.getValueCount().value();
+        }
 
-        try {
-            SearchHits<com.surg.extract.es.document.SurgeryRecordDocument> searchHits =
-                    elasticsearchOperations.search(nativeQuery, com.surg.extract.es.document.SurgeryRecordDocument.class);
+        Map<String, CaseStatsAnalysisDTO.NumericFieldStats> numericStats = new LinkedHashMap<>();
+        for (Map.Entry<String, String> field : NUMERIC_FIELD_LABELS.entrySet()) {
+            CaseStatsAnalysisDTO.NumericFieldStats stats = new CaseStatsAnalysisDTO.NumericFieldStats();
+            stats.setFieldLabel(field.getValue());
+            stats.setUnit(NUMERIC_FIELD_UNITS.get(field.getKey()));
 
-            var aggMap = searchHits.getAggregations().aggregations();
-
-            long totalCases = 0L;
-            var totalCountAgg = aggMap.get("total_count");
-            if (totalCountAgg != null) {
-                totalCases = totalCountAgg.getValueCount().value();
+            var statsAgg = aggMap.get(field.getKey() + "_stats");
+            if (statsAgg != null && statsAgg.stats() != null) {
+                StatsAggregate s = statsAgg.stats();
+                stats.setCount(s.count());
+                stats.setAvg(toBigDecimal(s.avg()));
+                stats.setMin(toBigDecimal(s.min()));
+                stats.setMax(toBigDecimal(s.max()));
+                double sumSq = s.sumOfSquares() != null ? s.sumOfSquares() : 0.0;
+                double mean = s.avg() != null ? s.avg() : 0.0;
+                long count = s.count();
+                if (count > 1) {
+                    double variance = (sumSq / count) - (mean * mean);
+                    stats.setStdDev(toBigDecimal(Math.sqrt(Math.max(0, variance))));
+                }
             }
+
+            var pctAgg = aggMap.get(field.getKey() + "_percentiles");
+            if (pctAgg != null && pctAgg.percentiles() != null) {
+                Map<String, Double> pcts = new HashMap<>();
+                for (var entry : pctAgg.percentiles().values().entrySet()) {
+                    try {
+                        pcts.put(entry.key(), entry.value().doubleValue());
+                    } catch (Exception ignored) {
+                    }
+                }
+                stats.setPercentile25(toBigDecimal(pcts.get("25.0")));
+                stats.setMedian(toBigDecimal(pcts.get("50.0")));
+                stats.setPercentile75(toBigDecimal(pcts.get("75.0")));
+                if (stats.getPercentile25() != null && stats.getPercentile75() != null) {
+                    stats.setTypicalRange(String.format("%s - %s%s",
+                            stats.getPercentile25().setScale(0, RoundingMode.HALF_UP).toPlainString(),
+                            stats.getPercentile75().setScale(0, RoundingMode.HALF_UP).toPlainString(),
+                            stats.getUnit() != null ? stats.getUnit() : ""));
+                }
+            }
+            numericStats.put(field.getKey(), stats);
+        }
+
+        Map<String, List<CaseStatsAnalysisDTO.CategoryBucket>> categoryStats = new LinkedHashMap<>();
+        for (Map.Entry<String, String> field : CATEGORY_FIELD_LABELS.entrySet()) {
+            List<CaseStatsAnalysisDTO.CategoryBucket> buckets = new ArrayList<>();
+            var termsAgg = aggMap.get(field.getKey() + "_terms");
+            if (termsAgg != null && termsAgg.terms() != null) {
+                long maxCount = 0;
+                List<TermsBucket> bs = termsAgg.terms().buckets().array();
+                for (TermsBucket b : bs) if (b.docCount() > maxCount) maxCount = b.docCount();
+                for (TermsBucket b : bs) {
+                    CaseStatsAnalysisDTO.CategoryBucket bucket = new CaseStatsAnalysisDTO.CategoryBucket();
+                    bucket.setValue(b.key().stringValue());
+                    bucket.setCount(b.docCount());
+                    bucket.setPercentage(totalCases > 0 ? (b.docCount() * 100.0 / totalCases) : 0.0);
+                    bucket.setIsMostFrequent(b.docCount() == maxCount && maxCount > 0);
+                    buckets.add(bucket);
+                }
+            }
+            categoryStats.put(field.getKey(), buckets);
+        }
+
+        if (isDepartmentScope) {
+            result.setDepartmentTotalCases(totalCases);
+            result.setDepartmentNumericStats(numericStats);
+            result.setDepartmentCategoryStats(categoryStats);
+        } else {
             result.setTotalCases(totalCases);
-
-            Map<String, CaseStatsAnalysisDTO.NumericFieldStats> numericStats = new LinkedHashMap<>();
-            for (Map.Entry<String, String> field : NUMERIC_FIELD_LABELS.entrySet()) {
-                CaseStatsAnalysisDTO.NumericFieldStats stats = new CaseStatsAnalysisDTO.NumericFieldStats();
-                stats.setFieldLabel(field.getValue());
-                stats.setUnit(NUMERIC_FIELD_UNITS.get(field.getKey()));
-
-                var statsAgg = aggMap.get(field.getKey() + "_stats");
-                if (statsAgg != null && statsAgg.stats() != null) {
-                    StatsAggregate s = statsAgg.stats();
-                    stats.setCount(s.count());
-                    stats.setAvg(toBigDecimal(s.avg()));
-                    stats.setMin(toBigDecimal(s.min()));
-                    stats.setMax(toBigDecimal(s.max()));
-                    double sumSq = s.sumOfSquares() != null ? s.sumOfSquares() : 0.0;
-                    double mean = s.avg() != null ? s.avg() : 0.0;
-                    long count = s.count();
-                    if (count > 1) {
-                        double variance = (sumSq / count) - (mean * mean);
-                        stats.setStdDev(toBigDecimal(Math.sqrt(Math.max(0, variance))));
-                    }
-                }
-
-                var pctAgg = aggMap.get(field.getKey() + "_percentiles");
-                if (pctAgg != null && pctAgg.percentiles() != null) {
-                    Map<String, Double> pcts = new HashMap<>();
-                    for (var entry : pctAgg.percentiles().values().entrySet()) {
-                        try {
-                            pcts.put(entry.key(), entry.value().doubleValue());
-                        } catch (Exception ignored) {
-                        }
-                    }
-                    stats.setPercentile25(toBigDecimal(pcts.get("25.0")));
-                    stats.setMedian(toBigDecimal(pcts.get("50.0")));
-                    stats.setPercentile75(toBigDecimal(pcts.get("75.0")));
-
-                    if (stats.getPercentile25() != null && stats.getPercentile75() != null) {
-                        stats.setTypicalRange(String.format("%s - %s%s",
-                                stats.getPercentile25().setScale(0, RoundingMode.HALF_UP).toPlainString(),
-                                stats.getPercentile75().setScale(0, RoundingMode.HALF_UP).toPlainString(),
-                                stats.getUnit() != null ? stats.getUnit() : ""));
-                    }
-                }
-
-                numericStats.put(field.getKey(), stats);
-            }
             result.setNumericStats(numericStats);
-
-            Map<String, List<CaseStatsAnalysisDTO.CategoryBucket>> categoryStats = new LinkedHashMap<>();
-            for (Map.Entry<String, String> field : CATEGORY_FIELD_LABELS.entrySet()) {
-                List<CaseStatsAnalysisDTO.CategoryBucket> buckets = new ArrayList<>();
-                var termsAgg = aggMap.get(field.getKey() + "_terms");
-                if (termsAgg != null && termsAgg.terms() != null) {
-                    long maxCount = 0;
-                    List<TermsBucket> bs = termsAgg.terms().buckets().array();
-                    for (TermsBucket b : bs) {
-                        if (b.docCount() > maxCount) maxCount = b.docCount();
-                    }
-                    for (TermsBucket b : bs) {
-                        CaseStatsAnalysisDTO.CategoryBucket bucket = new CaseStatsAnalysisDTO.CategoryBucket();
-                        bucket.setValue(b.key().stringValue());
-                        bucket.setCount(b.docCount());
-                        bucket.setPercentage(totalCases > 0 ? (b.docCount() * 100.0 / totalCases) : 0.0);
-                        bucket.setIsMostFrequent(b.docCount() == maxCount && maxCount > 0);
-                        buckets.add(bucket);
-                    }
-                }
-                categoryStats.put(field.getKey(), buckets);
-            }
             result.setCategoryStats(categoryStats);
-
-            result.setFieldComparisons(computeFieldComparisons(request, result));
-
-            return result;
-        } catch (Exception e) {
-            log.error("统计分析失败", e);
-            result.setTotalCases(0L);
-            result.setNumericStats(Collections.emptyMap());
-            result.setCategoryStats(Collections.emptyMap());
-            result.setFieldComparisons(Collections.emptyMap());
-            return result;
         }
     }
 
@@ -491,6 +520,73 @@ public class CaseCompareService {
         return comparisons;
     }
 
+    private static final Map<String, String> FIELD_KEY_TO_ENTITY_TYPE = Map.ofEntries(
+            Map.entry("bloodLoss", "BLOOD_LOSS"),
+            Map.entry("bloodTransfusion", "BLOOD_TRANSFUSION"),
+            Map.entry("fluidInfusion", "FLUID_INFUSION"),
+            Map.entry("urineOutput", "URINE_OUTPUT"),
+            Map.entry("incisionLevel", "INCISION_LEVEL"),
+            Map.entry("incisionHealing", "INCISION_HEALING"),
+            Map.entry("surgeryLevel", "SURGERY_LEVEL"),
+            Map.entry("anesthesiaType", "ANESTHESIA_TYPE")
+    );
+
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> adoptTypicalValue(Long recordId, AdoptTypicalValueRequestDTO request) {
+        if (recordId == null || request == null) {
+            throw new IllegalArgumentException("参数不能为空");
+        }
+        String fieldKey = request.getFieldKey();
+        String entityType = FIELD_KEY_TO_ENTITY_TYPE.get(fieldKey);
+        if (entityType == null) {
+            throw new IllegalArgumentException("未知字段: " + fieldKey);
+        }
+        String adoptedValue = request.getAdoptedValue();
+        if (!StringUtils.hasText(adoptedValue)) {
+            throw new IllegalArgumentException("采纳值不能为空");
+        }
+
+        List<SurgeryEntity> existings = entityMapper.selectByRecordId(recordId);
+        SurgeryEntity target = existings.stream()
+                .filter(e -> entityType.equals(e.getEntityType()))
+                .findFirst().orElse(null);
+
+        if (target != null) {
+            target.setEntityValue(adoptedValue);
+            target.setEntityUnit(request.getUnit());
+            target.setVerified(1);
+            target.setVerifiedBy(1L);
+            target.setVerifiedTime(LocalDateTime.now());
+            target.setSource("MANUAL");
+            entityMapper.updateById(target);
+        } else {
+            SurgeryEntity entity = new SurgeryEntity();
+            entity.setRecordId(recordId);
+            entity.setEntityType(entityType);
+            entity.setEntityValue(adoptedValue);
+            entity.setEntityUnit(request.getUnit());
+            entity.setConfidence(java.math.BigDecimal.ONE);
+            entity.setSource("MANUAL");
+            entity.setVerified(1);
+            entity.setVerifiedBy(1L);
+            entity.setVerifiedTime(LocalDateTime.now());
+            entity.setDeleted(0);
+            entityMapper.insert(entity);
+        }
+
+        esIndexService.asyncIndexRecord(recordId);
+
+        Map<String, Object> res = new HashMap<>();
+        res.put("recordId", recordId);
+        res.put("fieldKey", fieldKey);
+        res.put("entityType", entityType);
+        res.put("adoptedValue", adoptedValue);
+        res.put("unit", request.getUnit());
+        res.put("message", "采纳成功，已同步更新抽取结果并触发ES索引刷新");
+        log.info("采纳历史典型值: recordId={}, fieldKey={}, value={}", recordId, fieldKey, adoptedValue);
+        return res;
+    }
+
     private BigDecimal toBigDecimal(Double value) {
         if (value == null || Double.isNaN(value) || Double.isInfinite(value)) return null;
         return BigDecimal.valueOf(value);
@@ -504,9 +600,5 @@ public class CaseCompareService {
         } catch (Exception e) {
             return null;
         }
-    }
-
-    private String camelToSnake(String camel) {
-        return camel.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase();
     }
 }

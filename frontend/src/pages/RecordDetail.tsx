@@ -861,6 +861,9 @@ const RecordDetail: React.FC = () => {
           onViewCaseDetail={(caseRecordId) => {
             navigate(`/records/${caseRecordId}`)
           }}
+          onEntitiesAdopted={(updated) => {
+            setEntities(updated)
+          }}
         />
       )}
 

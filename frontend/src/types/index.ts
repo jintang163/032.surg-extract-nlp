@@ -959,7 +959,17 @@ export interface CaseStatsAnalysis {
   timeRangeDescription: string
   numericStats: Record<string, NumericFieldStats>
   categoryStats: Record<string, CategoryBucket[]>
+  departmentTotalCases?: number
+  departmentNumericStats?: Record<string, NumericFieldStats>
+  departmentCategoryStats?: Record<string, CategoryBucket[]>
   fieldComparisons: Record<string, FieldComparison>
+}
+
+export interface AdoptTypicalValueRequest {
+  fieldKey: string
+  fieldType: FieldType
+  adoptedValue: string
+  unit?: string
 }
 
 export interface CaseFullAnalysis {

@@ -42,8 +42,10 @@ import {
   SettingOutlined,
   DatabaseOutlined,
   ScanOutlined,
+  CheckOutlined,
+  SwapOutlined,
 } from '@ant-design/icons'
-import { caseCompareApi } from '@/services/api'
+import { caseCompareApi, recordApi } from '@/services/api'
 import type {
   SimilarCaseResult,
   CaseStatsAnalysis,
@@ -53,6 +55,7 @@ import type {
   DeviationLevel,
   DeviationDirection,
   CaseFullAnalysis,
+  AdoptTypicalValueRequest,
 } from '@/types'
 import {
   DeviationLevelMap,
@@ -72,11 +75,15 @@ interface CaseComparePanelProps {
   department?: string
   entities?: any[]
   onViewCaseDetail?: (caseRecordId: number) => void
+  onEntitiesAdopted?: (updatedEntities: any[]) => void
 }
 
 const FieldComparisonCard: React.FC<{
   comparison: FieldComparison
-}> = ({ comparison }) => {
+  fieldKey: string
+  onAdopt?: (fieldKey: string, comparison: FieldComparison) => void
+  adopting?: boolean
+}> = ({ comparison, fieldKey, onAdopt, adopting }) => {
   const levelInfo = comparison.deviationLevel
     ? DeviationLevelMap[comparison.deviationLevel]
     : null
@@ -192,6 +199,26 @@ const FieldComparisonCard: React.FC<{
           </div>
         </Tooltip>
       )}
+
+      {onAdopt && comparison.typicalValue && (
+        <Tooltip title={`将 ${comparison.fieldLabel} 的值采纳为「${comparison.typicalValue.replace(/\s*\(占比[\d.]+%\)\s*$/, '')}」`}>
+          <Button
+            type="primary"
+            ghost
+            size="small"
+            block
+            icon={<CheckOutlined />}
+            style={{ marginTop: 10, fontSize: 12 }}
+            loading={adopting}
+            onClick={(e) => {
+              e.stopPropagation()
+              onAdopt(fieldKey, comparison)
+            }}
+          >
+            采纳此典型值
+          </Button>
+        </Tooltip>
+      )}
     </div>
   )
 }
@@ -253,6 +280,7 @@ const CaseComparePanel: React.FC<CaseComparePanelProps> = ({
   department,
   entities = [],
   onViewCaseDetail,
+  onEntitiesAdopted,
 }) => {
   const [loading, setLoading] = useState(false)
   const [fullAnalysis, setFullAnalysis] = useState<CaseFullAnalysis | null>(null)
@@ -262,6 +290,7 @@ const CaseComparePanel: React.FC<CaseComparePanelProps> = ({
   const [timeRangeMonths, setTimeRangeMonths] = useState(6)
   const [topN, setTopN] = useState(10)
   const [minScore, setMinScore] = useState(0.5)
+  const [adoptingField, setAdoptingField] = useState<string | null>(null)
 
   const entityMap = useMemo(() => {
     const map: Record<string, string> = {}
@@ -303,6 +332,46 @@ const CaseComparePanel: React.FC<CaseComparePanelProps> = ({
   useEffect(() => {
     loadData()
   }, [recordId, effectiveSurgeryName, timeRangeMonths, topN, minScore])
+
+  const handleAdopt = async (fieldKey: string, comp: FieldComparison) => {
+    try {
+      setAdoptingField(fieldKey)
+      let adoptedValue = comp.typicalValue || ''
+      let unit: string | undefined = comp.unit
+      if (comp.fieldType === 'NUMERIC' && adoptedValue) {
+        const cleaned = adoptedValue.replace(/[^\d.]/g, '')
+        if (cleaned) adoptedValue = cleaned
+      } else if (comp.fieldType === 'CATEGORY' && adoptedValue) {
+        adoptedValue = adoptedValue.replace(/\s*\(占比[\d.]+%\)\s*$/, '').trim()
+      }
+      if (!adoptedValue) {
+        message.warning('无可采纳的典型值')
+        return
+      }
+      const payload: AdoptTypicalValueRequest = {
+        fieldKey,
+        fieldType: comp.fieldType,
+        adoptedValue,
+        unit,
+      }
+      await caseCompareApi.adoptTypicalValue(recordId, payload)
+      message.success(`${comp.fieldLabel} 已采纳典型值：${adoptedValue}${unit || ''}`)
+
+      if (onEntitiesAdopted) {
+        try {
+          const updated = await recordApi.getEntities(recordId)
+          onEntitiesAdopted(updated || [])
+        } catch (_e) {
+          // ignore
+        }
+      }
+      setTimeout(() => loadData(), 600)
+    } catch (e: any) {
+      message.error(e?.message || '采纳失败，请稍后重试')
+    } finally {
+      setAdoptingField(null)
+    }
+  }
 
   const similarCasesColumns = [
     {
@@ -596,7 +665,12 @@ const CaseComparePanel: React.FC<CaseComparePanelProps> = ({
                 <Row gutter={[12, 12]}>
                   {fieldComparisons.map(([key, comp]) => (
                     <Col key={key} xs={24} sm={12} lg={8} xl={6}>
-                      <FieldComparisonCard comparison={comp} />
+                      <FieldComparisonCard
+                        comparison={comp}
+                        fieldKey={key}
+                        onAdopt={handleAdopt}
+                        adopting={adoptingField === key}
+                      />
                     </Col>
                   ))}
                 </Row>
@@ -629,131 +703,278 @@ const CaseComparePanel: React.FC<CaseComparePanelProps> = ({
           )}
 
           {activeTab === 'stats' && (
-            <Row gutter={[16, 16]}>
-              <Col xs={24} lg={12}>
-                <Card
-                  size="small"
-                  title={
-                    <Space>
-                      <BarChartOutlined />
-                      数值字段统计
-                    </Space>
-                  }
-                >
-                  {numericFields.length > 0 ? (
-                    <div>
-                      {numericFields.map(([key, stats]: [string, NumericFieldStats]) => (
-                        <div key={key} style={{ marginBottom: 16 }}>
-                          <Row gutter={8} align="middle">
-                            <Col span={6}>
-                              <Text strong style={{ fontSize: 12 }}>{stats.fieldLabel}</Text>
-                            </Col>
-                            <Col span={18}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <Text type="secondary" style={{ fontSize: 11 }}>
-                                  中位 {stats.median?.toFixed?.(0) ?? '-'}
-                                </Text>
-                                <Text type="secondary" style={{ fontSize: 11 }}>
-                                  均 {stats.avg?.toFixed?.(0) ?? '-'}
-                                </Text>
-                                <Text type="secondary" style={{ fontSize: 11 }}>
-                                  范围 {stats.min?.toFixed?.(0) ?? '-'}-{stats.max?.toFixed?.(0) ?? '-'}
-                                  {stats.unit || ''}
-                                </Text>
-                              </div>
-                              <div
-                                style={{
-                                  marginTop: 4,
-                                  position: 'relative',
-                                  height: 20,
-                                  backgroundColor: '#f5f5f5',
-                                  borderRadius: 4,
-                                }}
-                              >
-                                {stats.percentile25 != null && stats.percentile75 != null && stats.max != null && stats.min != null && stats.max > stats.min && (
-                                  <>
-                                    <div
-                                      style={{
-                                        position: 'absolute',
-                                        left: `${((stats.percentile25 - stats.min) / (stats.max - stats.min)) * 100}%`,
-                                        right: `${100 - ((stats.percentile75 - stats.min) / (stats.max - stats.min)) * 100}%`,
-                                        top: 3,
-                                        bottom: 3,
-                                        backgroundColor: '#1677ff33',
-                                        borderRadius: 2,
-                                      }}
-                                    />
-                                    {stats.median != null && (
+            <div>
+              <Alert
+                style={{ marginBottom: 16 }}
+                type="info"
+                showIcon
+                icon={<DatabaseOutlined />}
+                message={
+                  <Space>
+                    <span>
+                      <Tag color="blue">目标口径</Tag>
+                      按 手术名 + 诊断 + 科室 匹配：共 <b>{fullAnalysis.stats.totalCases}</b> 例
+                    </span>
+                    {fullAnalysis.stats.departmentTotalCases != null && (
+                      <span>
+                        <Tag color="purple">科室平均</Tag>
+                        仅按 科室 + 时间范围：共 <b>{fullAnalysis.stats.departmentTotalCases}</b> 例
+                      </span>
+                    )}
+                  </Space>
+                }
+              />
+
+              <Row gutter={[16, 16]}>
+                <Col xs={24} lg={12}>
+                  <Card
+                    size="small"
+                    title={
+                      <Space>
+                        <BarChartOutlined style={{ color: '#1677ff' }} />
+                        数值字段统计
+                        <Tag color="blue" style={{ fontSize: 11 }}>目标口径</Tag>
+                      </Space>
+                    }
+                  >
+                    {numericFields.length > 0 ? (
+                      <div>
+                        {numericFields.map(([key, stats]: [string, NumericFieldStats]) => (
+                          <div key={key} style={{ marginBottom: 16 }}>
+                            <Row gutter={8} align="middle">
+                              <Col span={6}>
+                                <Text strong style={{ fontSize: 12 }}>{stats.fieldLabel}</Text>
+                              </Col>
+                              <Col span={18}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                  <Text type="secondary" style={{ fontSize: 11 }}>
+                                    中位 {stats.median?.toFixed?.(0) ?? '-'}
+                                  </Text>
+                                  <Text type="secondary" style={{ fontSize: 11 }}>
+                                    均 {stats.avg?.toFixed?.(0) ?? '-'}
+                                  </Text>
+                                  <Text type="secondary" style={{ fontSize: 11 }}>
+                                    范围 {stats.min?.toFixed?.(0) ?? '-'}-{stats.max?.toFixed?.(0) ?? '-'}
+                                    {stats.unit || ''}
+                                  </Text>
+                                </div>
+                                <div
+                                  style={{
+                                    marginTop: 4,
+                                    position: 'relative',
+                                    height: 20,
+                                    backgroundColor: '#f5f5f5',
+                                    borderRadius: 4,
+                                  }}
+                                >
+                                  {stats.percentile25 != null && stats.percentile75 != null && stats.max != null && stats.min != null && stats.max > stats.min && (
+                                    <>
                                       <div
                                         style={{
                                           position: 'absolute',
-                                          left: `${((stats.median - stats.min) / (stats.max - stats.min)) * 100}%`,
-                                          top: 0,
-                                          bottom: 0,
-                                          width: 2,
-                                          backgroundColor: '#1677ff',
+                                          left: `${((stats.percentile25 - stats.min) / (stats.max - stats.min)) * 100}%`,
+                                          right: `${100 - ((stats.percentile75 - stats.min) / (stats.max - stats.min)) * 100}%`,
+                                          top: 3,
+                                          bottom: 3,
+                                          backgroundColor: '#1677ff33',
+                                          borderRadius: 2,
                                         }}
                                       />
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                              {stats.typicalRange && (
-                                <div style={{ fontSize: 11, color: '#1677ff', marginTop: 2 }}>
-                                  典型区间：{stats.typicalRange}
+                                      {stats.median != null && (
+                                        <div
+                                          style={{
+                                            position: 'absolute',
+                                            left: `${((stats.median - stats.min) / (stats.max - stats.min)) * 100}%`,
+                                            top: 0,
+                                            bottom: 0,
+                                            width: 2,
+                                            backgroundColor: '#1677ff',
+                                          }}
+                                        />
+                                      )}
+                                    </>
+                                  )}
                                 </div>
-                              )}
-                            </Col>
-                          </Row>
-                          {key !== numericFields[numericFields.length - 1][0] && (
-                            <Divider style={{ margin: '12px 0' }} dashed />
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <Empty description="暂无数值统计" />
-                  )}
-                </Card>
-              </Col>
+                                {stats.typicalRange && (
+                                  <div style={{ fontSize: 11, color: '#1677ff', marginTop: 2 }}>
+                                    典型区间：{stats.typicalRange}
+                                  </div>
+                                )}
+                              </Col>
+                            </Row>
+                            {key !== numericFields[numericFields.length - 1][0] && (
+                              <Divider style={{ margin: '12px 0' }} dashed />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <Empty description="暂无数值统计" />
+                    )}
+                  </Card>
+                </Col>
 
-              <Col xs={24} lg={12}>
-                <Card
-                  size="small"
-                  title={
-                    <Space>
-                      <FireOutlined />
-                      分类字段分布
-                    </Space>
-                  }
-                >
-                  {categoryFields.length > 0 ? (
-                    <div>
-                      {categoryFields.map(([key, buckets]: [string, CategoryBucket[]]) => (
-                        <div key={key}>
-                          <CategoryDistributionBar
-                            buckets={buckets}
-                            fieldLabel={
-                              {
-                                incisionLevel: '切口等级',
-                                incisionHealing: '切口愈合',
-                                surgeryLevel: '手术等级',
-                                anesthesiaType: '麻醉方式',
-                              }[key] || key
-                            }
-                          />
-                          {key !== categoryFields[categoryFields.length - 1][0] && (
-                            <Divider style={{ margin: '8px 0' }} dashed />
-                          )}
+                <Col xs={24} lg={12}>
+                  <Card
+                    size="small"
+                    title={
+                      <Space>
+                        <FireOutlined style={{ color: '#fa541c' }} />
+                        分类字段分布
+                        <Tag color="blue" style={{ fontSize: 11 }}>目标口径</Tag>
+                      </Space>
+                    }
+                  >
+                    {categoryFields.length > 0 ? (
+                      <div>
+                        {categoryFields.map(([key, buckets]: [string, CategoryBucket[]]) => (
+                          <div key={key}>
+                            <CategoryDistributionBar
+                              buckets={buckets}
+                              fieldLabel={
+                                {
+                                  incisionLevel: '切口等级',
+                                  incisionHealing: '切口愈合',
+                                  surgeryLevel: '手术等级',
+                                  anesthesiaType: '麻醉方式',
+                                }[key] || key
+                              }
+                            />
+                            {key !== categoryFields[categoryFields.length - 1][0] && (
+                              <Divider style={{ margin: '8px 0' }} dashed />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <Empty description="暂无分类分布" />
+                    )}
+                  </Card>
+                </Col>
+
+                {fullAnalysis.stats.departmentNumericStats && Object.keys(fullAnalysis.stats.departmentNumericStats).length > 0 && (
+                  <>
+                    <Col xs={24} lg={12}>
+                      <Card
+                        size="small"
+                        title={
+                          <Space>
+                            <SwapOutlined style={{ color: '#722ed1' }} />
+                            数值字段统计
+                            <Tag color="purple" style={{ fontSize: 11 }}>科室平均</Tag>
+                          </Space>
+                        }
+                      >
+                        <div>
+                          {Object.entries(fullAnalysis.stats.departmentNumericStats).map(([key, stats]: [string, any]) => (
+                            <div key={key} style={{ marginBottom: 16 }}>
+                              <Row gutter={8} align="middle">
+                                <Col span={6}>
+                                  <Text strong style={{ fontSize: 12 }}>{stats.fieldLabel}</Text>
+                                </Col>
+                                <Col span={18}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <Text type="secondary" style={{ fontSize: 11 }}>
+                                      中位 {stats.median?.toFixed?.(0) ?? '-'}
+                                    </Text>
+                                    <Text type="secondary" style={{ fontSize: 11 }}>
+                                      均 {stats.avg?.toFixed?.(0) ?? '-'}
+                                    </Text>
+                                    <Text type="secondary" style={{ fontSize: 11 }}>
+                                      范围 {stats.min?.toFixed?.(0) ?? '-'}-{stats.max?.toFixed?.(0) ?? '-'}
+                                      {stats.unit || ''}
+                                    </Text>
+                                  </div>
+                                  <div
+                                    style={{
+                                      marginTop: 4,
+                                      position: 'relative',
+                                      height: 20,
+                                      backgroundColor: '#f5f5f5',
+                                      borderRadius: 4,
+                                    }}
+                                  >
+                                    {stats.percentile25 != null && stats.percentile75 != null && stats.max != null && stats.min != null && stats.max > stats.min && (
+                                      <>
+                                        <div
+                                          style={{
+                                            position: 'absolute',
+                                            left: `${((stats.percentile25 - stats.min) / (stats.max - stats.min)) * 100}%`,
+                                            right: `${100 - ((stats.percentile75 - stats.min) / (stats.max - stats.min)) * 100}%`,
+                                            top: 3,
+                                            bottom: 3,
+                                            backgroundColor: '#722ed133',
+                                            borderRadius: 2,
+                                          }}
+                                        />
+                                        {stats.median != null && (
+                                          <div
+                                            style={{
+                                              position: 'absolute',
+                                              left: `${((stats.median - stats.min) / (stats.max - stats.min)) * 100}%`,
+                                              top: 0,
+                                              bottom: 0,
+                                              width: 2,
+                                              backgroundColor: '#722ed1',
+                                            }}
+                                          />
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                  {stats.typicalRange && (
+                                    <div style={{ fontSize: 11, color: '#722ed1', marginTop: 2 }}>
+                                      科室典型区间：{stats.typicalRange}
+                                    </div>
+                                  )}
+                                </Col>
+                              </Row>
+                              {key !== Object.keys(fullAnalysis.stats!.departmentNumericStats!).slice(-1)[0] && (
+                                <Divider style={{ margin: '12px 0' }} dashed />
+                              )}
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <Empty description="暂无分类分布" />
-                  )}
-                </Card>
-              </Col>
-            </Row>
+                      </Card>
+                    </Col>
+
+                    <Col xs={24} lg={12}>
+                      <Card
+                        size="small"
+                        title={
+                          <Space>
+                            <FireOutlined style={{ color: '#722ed1' }} />
+                            分类字段分布
+                            <Tag color="purple" style={{ fontSize: 11 }}>科室平均</Tag>
+                          </Space>
+                        }
+                      >
+                        <div>
+                          {Object.entries(fullAnalysis.stats.departmentCategoryStats || {}).map(([key, buckets]: [string, any]) => (
+                            <div key={key}>
+                              <CategoryDistributionBar
+                                buckets={buckets}
+                                fieldLabel={
+                                  {
+                                    incisionLevel: '切口等级',
+                                    incisionHealing: '切口愈合',
+                                    surgeryLevel: '手术等级',
+                                    anesthesiaType: '麻醉方式',
+                                  }[key] || key
+                                }
+                              />
+                              {key !== Object.keys(fullAnalysis.stats!.departmentCategoryStats || {}).slice(-1)[0] && (
+                                <Divider style={{ margin: '8px 0' }} dashed />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </Card>
+                    </Col>
+                  </>
+                )}
+              </Row>
+            </div>
           )}
         </>
       )}

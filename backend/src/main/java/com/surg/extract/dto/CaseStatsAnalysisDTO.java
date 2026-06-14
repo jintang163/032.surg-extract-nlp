@@ -17,11 +17,20 @@ public class CaseStatsAnalysisDTO {
     @Schema(description = "统计时间范围描述")
     private String timeRangeDescription;
 
-    @Schema(description = "数值字段统计")
+    @Schema(description = "同科室全部病例数（不限制手术名和诊断）")
+    private Long departmentTotalCases;
+
+    @Schema(description = "数值字段统计（按手术名+诊断+科室匹配口径）")
     private Map<String, NumericFieldStats> numericStats;
 
-    @Schema(description = "分类字段统计（枚举分布）")
+    @Schema(description = "分类字段统计（枚举分布，按手术名+诊断+科室匹配口径）")
     private Map<String, List<CategoryBucket>> categoryStats;
+
+    @Schema(description = "科室数值字段统计（仅按科室+时间范围，展示科室平均）")
+    private Map<String, NumericFieldStats> departmentNumericStats;
+
+    @Schema(description = "科室分类字段统计（仅按科室+时间范围）")
+    private Map<String, List<CategoryBucket>> departmentCategoryStats;
 
     @Schema(description = "差异对比：当前值 vs 历史典型值")
     private Map<String, FieldComparison> fieldComparisons;
