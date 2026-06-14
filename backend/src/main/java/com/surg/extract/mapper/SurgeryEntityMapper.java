@@ -33,4 +33,23 @@ public interface SurgeryEntityMapper extends BaseMapper<SurgeryEntity> {
             @Param("department") String department,
             @Param("confidenceThreshold") Double confidenceThreshold
     );
+
+    List<Map<String, Object>> selectAccuracyBySurgeryName(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate,
+            @Param("department") String department,
+            @Param("limit") Integer limit
+    );
+
+    Map<String, Object> selectOverallAccuracy(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate,
+            @Param("department") String department
+    );
+
+    List<Map<String, Object>> selectAccuracyByDepartment(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate,
+            @Param("department") String department
+    );
 }

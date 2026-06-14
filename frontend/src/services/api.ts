@@ -595,4 +595,14 @@ export const analyticsApi = {
     department?: string
     threshold?: number
   }) => http.get<any[]>('/analytics/low-confidence/distribution', { params }),
+
+  exportDashboard: (params?: {
+    startDate?: string
+    endDate?: string
+    department?: string
+  }) =>
+    http.get('/analytics/export', {
+      params,
+      responseType: 'blob',
+    }),
 }

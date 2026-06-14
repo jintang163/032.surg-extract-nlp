@@ -124,22 +124,23 @@
     <select id="selectOverviewStats" resultType="java.util.Map">
         SELECT
             COUNT(*) AS totalRecords,
-            SUM(CASE WHEN process_status IN ('NER_DONE', 'COMPLETED') THEN 1 ELSE 0 END) AS extractedRecords,
-            COUNT(DISTINCT department) AS totalDepartments,
-            COUNT(DISTINCT upload_user_id) AS totalSurgeons,
-            SUM(CASE WHEN manual_duration_est IS NOT NULL AND manual_duration_est &gt; 0
-                THEN manual_duration_est ELSE 0 END) AS totalManualDuration,
-            SUM(CASE WHEN fill_duration IS NOT NULL THEN fill_duration ELSE 0 END) AS totalActualDuration
-        FROM surgery_record
-        WHERE deleted = 0
+            SUM(CASE WHEN r.process_status IN ('NER_DONE', 'COMPLETED') THEN 1 ELSE 0 END) AS extractedRecords,
+            COUNT(DISTINCT r.department) AS totalDepartments,
+            COUNT(DISTINCT r.upload_user_id) AS totalSurgeons,
+            SUM(CASE WHEN h.manual_duration_est IS NOT NULL AND h.manual_duration_est &gt; 0
+                THEN h.manual_duration_est ELSE 0 END) AS totalManualDuration,
+            SUM(CASE WHEN h.fill_duration IS NOT NULL THEN h.fill_duration ELSE 0 END) AS totalActualDuration
+        FROM surgery_record r
+        LEFT JOIN medical_record_home h ON h.record_id = r.id AND h.deleted = 0
+        WHERE r.deleted = 0
         <if test="startDate != null">
-            AND DATE(upload_time) &gt;= #{startDate}
+            AND DATE(r.upload_time) &gt;= #{startDate}
         </if>
         <if test="endDate != null">
-            AND DATE(upload_time) &lt;= #{endDate}
+            AND DATE(r.upload_time) &lt;= #{endDate}
         </if>
         <if test="department != null and department != ''">
-            AND department = #{department}
+            AND r.department = #{department}
         </if>
     </select>
 

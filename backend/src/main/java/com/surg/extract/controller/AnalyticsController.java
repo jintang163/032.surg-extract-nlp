@@ -6,10 +6,15 @@ import com.surg.extract.service.AnalyticsService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -118,5 +123,26 @@ public class AnalyticsController {
             @RequestParam(required = false) String department,
             @RequestParam(required = false) Double threshold) {
         return Result.success(analyticsService.getLowConfidenceDistribution(startDate, endDate, department, threshold));
+    }
+
+    @GetMapping("/export")
+    @Operation(summary = "导出质控报表", description = "导出统计仪表盘全部数据为 Excel 报表")
+    public void exportDashboardReport(
+            @Parameter(description = "开始日期") @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,
+            @Parameter(description = "结束日期") @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate endDate,
+            @Parameter(description = "科室过滤") @RequestParam(required = false) String department,
+            HttpServletResponse response) throws IOException {
+        byte[] data = analyticsService.exportDashboardReport(startDate, endDate, department);
+        String fileName = "质控统计仪表盘报表_" +
+                (startDate != null ? startDate.toString() : "全部") + "_" +
+                (endDate != null ? endDate.toString() : "全部") + ".xlsx";
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition",
+                "attachment; filename*=UTF-8''" + URLEncoder.encode(fileName, StandardCharsets.UTF_8));
+        response.setHeader("Content-Length", String.valueOf(data.length));
+        try (OutputStream out = response.getOutputStream()) {
+            out.write(data);
+            out.flush();
+        }
     }
 }

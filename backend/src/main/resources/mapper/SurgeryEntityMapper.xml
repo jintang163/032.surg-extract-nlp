@@ -83,4 +83,84 @@
         ORDER BY count DESC
     </select>
 
+    <select id="selectAccuracyBySurgeryName" resultType="java.util.Map">
+        SELECT
+            h.surgery_name AS surgeryName,
+            COUNT(*) AS totalEntities,
+            SUM(CASE WHEN e.verified = 1 OR (e.confidence IS NOT NULL AND e.confidence &gt;= 0.8) THEN 1 ELSE 0 END) AS accurateEntities,
+            ROUND(
+                SUM(CASE WHEN e.verified = 1 OR (e.confidence IS NOT NULL AND e.confidence &gt;= 0.8) THEN 1 ELSE 0 END) * 100.0 /
+                NULLIF(COUNT(*), 0), 2
+            ) AS avgAccuracyRate
+        FROM surgery_entity e
+        INNER JOIN surgery_record r ON r.id = e.record_id AND r.deleted = 0
+        LEFT JOIN medical_record_home h ON h.record_id = r.id AND h.deleted = 0
+        WHERE e.deleted = 0
+          AND h.surgery_name IS NOT NULL AND h.surgery_name != ''
+        <if test="startDate != null">
+            AND DATE(r.upload_time) &gt;= #{startDate}
+        </if>
+        <if test="endDate != null">
+            AND DATE(r.upload_time) &lt;= #{endDate}
+        </if>
+        <if test="department != null and department != ''">
+            AND r.department = #{department}
+        </if>
+        GROUP BY h.surgery_name
+        ORDER BY totalEntities DESC
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <select id="selectOverallAccuracy" resultType="java.util.Map">
+        SELECT
+            COUNT(*) AS totalEntities,
+            SUM(CASE WHEN e.verified = 1 OR (e.confidence IS NOT NULL AND e.confidence &gt;= 0.8) THEN 1 ELSE 0 END) AS accurateEntities,
+            ROUND(
+                SUM(CASE WHEN e.verified = 1 OR (e.confidence IS NOT NULL AND e.confidence &gt;= 0.8) THEN 1 ELSE 0 END) * 100.0 /
+                NULLIF(COUNT(*), 0), 2
+            ) AS accuracyRate,
+            SUM(CASE WHEN e.verified = 1 THEN 1 ELSE 0 END) AS verifiedEntities,
+            SUM(CASE WHEN e.confidence IS NOT NULL AND e.confidence &gt;= 0.8 THEN 1 ELSE 0 END) AS highConfidenceEntities
+        FROM surgery_entity e
+        INNER JOIN surgery_record r ON r.id = e.record_id AND r.deleted = 0
+        WHERE e.deleted = 0
+        <if test="startDate != null">
+            AND DATE(r.upload_time) &gt;= #{startDate}
+        </if>
+        <if test="endDate != null">
+            AND DATE(r.upload_time) &lt;= #{endDate}
+        </if>
+        <if test="department != null and department != ''">
+            AND r.department = #{department}
+        </if>
+    </select>
+
+    <select id="selectAccuracyByDepartment" resultType="java.util.Map">
+        SELECT
+            r.department AS department,
+            COUNT(*) AS totalEntities,
+            SUM(CASE WHEN e.verified = 1 OR (e.confidence IS NOT NULL AND e.confidence &gt;= 0.8) THEN 1 ELSE 0 END) AS accurateEntities,
+            ROUND(
+                SUM(CASE WHEN e.verified = 1 OR (e.confidence IS NOT NULL AND e.confidence &gt;= 0.8) THEN 1 ELSE 0 END) * 100.0 /
+                NULLIF(COUNT(*), 0), 2
+            ) AS avgAccuracyRate
+        FROM surgery_entity e
+        INNER JOIN surgery_record r ON r.id = e.record_id AND r.deleted = 0
+        WHERE e.deleted = 0
+          AND r.department IS NOT NULL
+        <if test="startDate != null">
+            AND DATE(r.upload_time) &gt;= #{startDate}
+        </if>
+        <if test="endDate != null">
+            AND DATE(r.upload_time) &lt;= #{endDate}
+        </if>
+        <if test="department != null and department != ''">
+            AND r.department = #{department}
+        </if>
+        GROUP BY r.department
+        ORDER BY totalEntities DESC
+    </select>
+
 </mapper>

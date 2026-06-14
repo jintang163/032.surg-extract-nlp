@@ -14,6 +14,8 @@ import {
   Tooltip,
   Empty,
   Spin,
+  Button,
+  message,
 } from 'antd'
 import {
   BarChartOutlined,
@@ -26,8 +28,11 @@ import {
   ApartmentOutlined,
   UserOutlined,
   AppstoreOutlined,
+  DownloadOutlined,
+  ReloadOutlined,
+  FilterOutlined,
 } from '@ant-design/icons'
-import ReactECharts from 'echarts-for-react'
+import ReactECharts, { EChartsOption } from 'echarts-for-react'
 import dayjs, { Dayjs } from 'dayjs'
 import { analyticsApi } from '@/services/api'
 import type {
@@ -44,13 +49,16 @@ const { Option } = Select
 
 const AnalyticsDashboard: React.FC = () => {
   const [loading, setLoading] = useState(false)
+  const [exportLoading, setExportLoading] = useState(false)
   const [data, setData] = useState<AnalyticsDashboardData | null>(null)
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>([
     dayjs().subtract(30, 'day'),
     dayjs(),
   ])
   const [selectedDepartment, setSelectedDepartment] = useState<string | undefined>(undefined)
+  const [selectedEntityType, setSelectedEntityType] = useState<string | undefined>(undefined)
   const [drillDimension, setDrillDimension] = useState<'department' | 'surgeon' | 'surgeryType'>('department')
+  const [selectedDrillItem, setSelectedDrillItem] = useState<string | null>(null)
 
   useEffect(() => {
     loadData()
@@ -65,10 +73,37 @@ const AnalyticsDashboard: React.FC = () => {
       if (selectedDepartment) params.department = selectedDepartment
       const result = await analyticsApi.getDashboard(params)
       setData(result)
+      setSelectedDrillItem(null)
     } catch (e) {
       console.error('加载统计数据失败', e)
+      message.error('加载统计数据失败')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleExport = async () => {
+    setExportLoading(true)
+    try {
+      const params: Record<string, any> = {}
+      if (dateRange && dateRange[0]) params.startDate = dateRange[0].format('YYYY-MM-DD')
+      if (dateRange && dateRange[1]) params.endDate = dateRange[1].format('YYYY-MM-DD')
+      if (selectedDepartment) params.department = selectedDepartment
+      const blob = await analyticsApi.exportDashboard(params)
+      const url = URL.createObjectURL(blob as Blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `质控统计仪表盘报表_${dayjs().format('YYYYMMDD')}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      message.success('导出成功')
+    } catch (e) {
+      console.error('导出失败', e)
+      message.error('导出失败')
+    } finally {
+      setExportLoading(false)
     }
   }
 
@@ -77,17 +112,25 @@ const AnalyticsDashboard: React.FC = () => {
     return data.departmentStats.map((d) => ({ value: d.department, label: d.department }))
   }, [data])
 
-  const coverageOption = useMemo(() => {
-    if (!data?.coverageTrend?.length) return null
-    const dates = Array.from(new Set(data.coverageTrend.map((d) => d.date))).sort()
+  const filteredCoverageTrend = useMemo(() => {
+    if (!data?.coverageTrend?.length) return []
+    if (drillDimension === 'department' && selectedDrillItem) {
+      return data.coverageTrend.filter((d) => d.department === selectedDrillItem)
+    }
+    return data.coverageTrend
+  }, [data, drillDimension, selectedDrillItem])
+
+  const coverageOption: EChartsOption = useMemo(() => {
+    if (!filteredCoverageTrend?.length) return {}
+    const dates = Array.from(new Set(filteredCoverageTrend.map((d) => d.date))).sort()
     const deptMap = new Map<string, number[]>()
-    data.coverageTrend.forEach((item) => {
+    filteredCoverageTrend.forEach((item) => {
       const key = item.department || '全部'
       if (!deptMap.has(key)) deptMap.set(key, [])
     })
     dates.forEach((date) => {
       deptMap.forEach((arr, key) => {
-        const found = data.coverageTrend.find(
+        const found = filteredCoverageTrend.find(
           (d) => d.date === date && (d.department || '全部') === key
         )
         arr.push(found ? found.coverageRate : 0)
@@ -102,7 +145,7 @@ const AnalyticsDashboard: React.FC = () => {
     }))
     return {
       tooltip: { trigger: 'axis' },
-      legend: { data: series.map((s) => s.name), top: 0 },
+      legend: { data: series.map((s) => s.name), top: 0, type: 'scroll' },
       grid: { left: 40, right: 20, top: 40, bottom: 40 },
       xAxis: {
         type: 'category',
@@ -111,16 +154,30 @@ const AnalyticsDashboard: React.FC = () => {
       },
       yAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%' } },
       series,
-    }
-  }, [data])
+    } as EChartsOption
+  }, [filteredCoverageTrend])
 
-  const efficiencyOption = useMemo(() => {
-    if (!data?.efficiencyTrend?.length) return null
-    const dates = Array.from(new Set(data.efficiencyTrend.map((d) => d.date))).sort()
+  const filteredEfficiencyTrend = useMemo(() => {
+    if (!data?.efficiencyTrend?.length) return []
+    let list = data.efficiencyTrend
+    if (drillDimension === 'department' && selectedDrillItem) {
+      list = list.filter((d) => d.department === selectedDrillItem)
+    }
+    if (drillDimension === 'surgeon' && selectedDrillItem) {
+      list = list.filter((d) => d.surgeon === selectedDrillItem)
+    }
+    return list
+  }, [data, drillDimension, selectedDrillItem])
+
+  const efficiencyOption: EChartsOption = useMemo(() => {
+    if (!filteredEfficiencyTrend?.length) return {}
+    const dates = Array.from(new Set(filteredEfficiencyTrend.map((d) => d.date))).sort()
     const avgSaved = dates.map((date) => {
-      const items = data.efficiencyTrend.filter((d) => d.date === date)
+      const items = filteredEfficiencyTrend.filter((d) => d.date === date)
       if (!items.length) return 0
-      return items.reduce((s, i) => s + (i.timeSavedRate || 0), 0) / items.length
+      const totalManual = items.reduce((s, i) => s + (i.avgManualDuration || 0) * (i.recordCount || 1), 0)
+      const totalActual = items.reduce((s, i) => s + (i.avgActualDuration || 0) * (i.recordCount || 1), 0)
+      return totalManual > 0 ? ((totalManual - totalActual) / totalManual) * 100 : 0
     })
     return {
       tooltip: { trigger: 'axis', formatter: '{b}<br/>时间节省率: {c}%' },
@@ -143,26 +200,38 @@ const AnalyticsDashboard: React.FC = () => {
           lineStyle: { color: '#52c41a' },
         },
       ],
-    }
-  }, [data])
+    } as EChartsOption
+  }, [filteredEfficiencyTrend])
 
-  const accuracyOption = useMemo(() => {
-    if (!data?.accuracyTrend?.length) return null
-    const dates = Array.from(new Set(data.accuracyTrend.map((d) => d.date))).sort()
-    const types = Array.from(new Set(data.accuracyTrend.map((d) => d.entityType).filter(Boolean))).slice(0, 6)
+  const filteredAccuracyTrend = useMemo(() => {
+    if (!data?.accuracyTrend?.length) return []
+    let list = data.accuracyTrend
+    if (drillDimension === 'department' && selectedDrillItem) {
+      list = list.filter((d) => d.department === selectedDrillItem)
+    }
+    if (selectedEntityType) {
+      list = list.filter((d) => d.entityType === selectedEntityType)
+    }
+    return list
+  }, [data, drillDimension, selectedDrillItem, selectedEntityType])
+
+  const accuracyOption: EChartsOption = useMemo(() => {
+    if (!filteredAccuracyTrend?.length) return {}
+    const dates = Array.from(new Set(filteredAccuracyTrend.map((d) => d.date))).sort()
+    const types = Array.from(new Set(filteredAccuracyTrend.map((d) => d.entityType).filter(Boolean))).slice(0, 6)
     const series = types.map((type) => ({
       name: EntityTypeLabelMap[type as keyof typeof EntityTypeLabelMap]?.label || type,
       type: 'line',
       smooth: true,
       symbolSize: 5,
       data: dates.map((date) => {
-        const found = data.accuracyTrend.find((d) => d.date === date && d.entityType === type)
+        const found = filteredAccuracyTrend.find((d) => d.date === date && d.entityType === type)
         return found ? found.accuracyRate : null
       }),
     }))
     return {
       tooltip: { trigger: 'axis' },
-      legend: { data: series.map((s) => s.name), top: 0 },
+      legend: { data: series.map((s) => s.name), top: 0, type: 'scroll' },
       grid: { left: 40, right: 20, top: 40, bottom: 40 },
       xAxis: {
         type: 'category',
@@ -171,43 +240,60 @@ const AnalyticsDashboard: React.FC = () => {
       },
       yAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%' } },
       series,
-    }
+    } as EChartsOption
+  }, [filteredAccuracyTrend])
+
+  const entityTypeOptions = useMemo(() => {
+    if (!data?.accuracyTrend?.length) return []
+    const types = Array.from(new Set(data.accuracyTrend.map((d) => d.entityType).filter(Boolean)))
+    return types.map((t) => ({
+      value: t,
+      label: EntityTypeLabelMap[t as keyof typeof EntityTypeLabelMap]?.label || t,
+    }))
   }, [data])
 
-  const departmentBarOption = useMemo(() => {
-    if (!data?.departmentStats?.length) return null
-    const sorted = [...data.departmentStats].sort((a, b) => b.totalRecords - a.totalRecords).slice(0, 10)
+  const departmentBarOption: EChartsOption = useMemo(() => {
+    if (!data?.departmentStats?.length) return {}
+    const list = selectedDrillItem
+      ? data.departmentStats.filter((d) => d.department === selectedDrillItem)
+      : [...data.departmentStats].sort((a, b) => b.totalRecords - a.totalRecords).slice(0, 10)
     return {
       tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-      legend: { data: ['覆盖率', '时间节省率'], top: 0 },
+      legend: { data: ['覆盖率', '时间节省率', '准确率'], top: 0 },
       grid: { left: 100, right: 40, top: 40, bottom: 30 },
       xAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%' } },
-      yAxis: { type: 'category', data: sorted.map((d) => d.department) },
+      yAxis: { type: 'category', data: list.map((d) => d.department) },
       series: [
         {
           name: '覆盖率',
           type: 'bar',
-          data: sorted.map((d) => d.coverageRate),
+          data: list.map((d) => d.coverageRate),
           itemStyle: { color: '#1677ff' },
         },
         {
           name: '时间节省率',
           type: 'bar',
-          data: sorted.map((d) => d.avgTimeSavedRate || 0),
+          data: list.map((d) => d.avgTimeSavedRate || 0),
           itemStyle: { color: '#52c41a' },
         },
+        {
+          name: '准确率',
+          type: 'bar',
+          data: list.map((d) => d.avgAccuracyRate || 0),
+          itemStyle: { color: '#722ed1' },
+        },
       ],
-    }
-  }, [data])
+    } as EChartsOption
+  }, [data, selectedDrillItem])
 
-  const wordCloudOption = useMemo(() => {
-    if (!data?.surgeryWordCloud?.length) return null
+  const wordCloudOption: EChartsOption = useMemo(() => {
+    if (!data?.surgeryWordCloud?.length) return {}
     const list = data.surgeryWordCloud.filter((w) => w.name && w.value > 0).slice(0, 60)
-    if (!list.length) return null
+    if (!list.length) return {}
     const maxValue = Math.max(...list.map((w) => w.value))
     const colors = ['#1677ff', '#52c41a', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2', '#faad14']
     return {
-      tooltip: { show: true },
+      tooltip: { show: true, formatter: (p: any) => `${p.name}: ${p.value}例` },
       series: [
         {
           type: 'graph',
@@ -217,26 +303,28 @@ const AnalyticsDashboard: React.FC = () => {
             show: true,
             formatter: '{b}',
             position: 'inside',
+            color: '#fff',
+            fontSize: 12,
           },
           data: list.map((w, i) => {
-            const size = 12 + (w.value / maxValue) * 28
+            const size = 14 + (w.value / maxValue) * 32
             return {
               name: w.name,
               value: w.value,
               symbolSize: size,
-              x: (i % 8) * 80 + 50 + Math.random() * 20,
+              x: (i % 8) * 80 + 50 + Math.random() * 15,
               y: Math.floor(i / 8) * 50 + 40,
               itemStyle: { color: colors[i % colors.length] },
-              label: { fontSize: Math.max(10, size * 0.5) },
+              label: { fontSize: Math.max(10, size * 0.45) },
             }
           }),
         },
       ],
-    }
+    } as EChartsOption
   }, [data])
 
-  const lowConfidenceOption = useMemo(() => {
-    if (!data?.lowConfidenceDistribution?.length) return null
+  const lowConfidenceOption: EChartsOption = useMemo(() => {
+    if (!data?.lowConfidenceDistribution?.length) return {}
     const sorted = [...data.lowConfidenceDistribution].sort((a, b) => b.count - a.count).slice(0, 10)
     return {
       tooltip: {
@@ -276,13 +364,32 @@ const AnalyticsDashboard: React.FC = () => {
           },
         },
       ],
-    }
+    } as EChartsOption
   }, [data])
+
+  const handleDrillRowClick = (record: any) => {
+    const key = record.department || record.surgeon || record.surgeryName
+    if (selectedDrillItem === key) {
+      setSelectedDrillItem(null)
+    } else {
+      setSelectedDrillItem(key)
+    }
+  }
 
   const drillTableColumns = useMemo(() => {
     if (drillDimension === 'department') {
       return [
-        { title: '科室', dataIndex: 'department', key: 'department', width: 150 },
+        {
+          title: '科室',
+          dataIndex: 'department',
+          key: 'department',
+          width: 150,
+          render: (v: string) => (
+            <Tag color={selectedDrillItem === v ? 'blue' : 'default'}>
+              <ApartmentOutlined /> {v}
+            </Tag>
+          ),
+        },
         {
           title: '记录数',
           dataIndex: 'totalRecords',
@@ -317,11 +424,32 @@ const AnalyticsDashboard: React.FC = () => {
           sorter: (a: DepartmentStats, b: DepartmentStats) =>
             (a.avgTimeSavedRate || 0) - (b.avgTimeSavedRate || 0),
         },
+        {
+          title: '准确率',
+          dataIndex: 'avgAccuracyRate',
+          key: 'avgAccuracyRate',
+          width: 180,
+          render: (v: number) => (
+            <Progress percent={v || 0} size="small" strokeColor="#722ed1" />
+          ),
+          sorter: (a: DepartmentStats, b: DepartmentStats) =>
+            (a.avgAccuracyRate || 0) - (b.avgAccuracyRate || 0),
+        },
       ]
     }
     if (drillDimension === 'surgeon') {
       return [
-        { title: '手术医生', dataIndex: 'surgeon', key: 'surgeon', width: 150 },
+        {
+          title: '手术医生',
+          dataIndex: 'surgeon',
+          key: 'surgeon',
+          width: 150,
+          render: (v: string) => (
+            <Tag color={selectedDrillItem === v ? 'blue' : 'default'}>
+              <UserOutlined /> {v}
+            </Tag>
+          ),
+        },
         {
           title: '手术记录数',
           dataIndex: 'recordCount',
@@ -352,7 +480,17 @@ const AnalyticsDashboard: React.FC = () => {
       ]
     }
     return [
-      { title: '手术名称', dataIndex: 'surgeryName', key: 'surgeryName', ellipsis: true },
+      {
+        title: '手术名称',
+        dataIndex: 'surgeryName',
+        key: 'surgeryName',
+        ellipsis: true,
+        render: (v: string) => (
+          <Tag color={selectedDrillItem === v ? 'blue' : 'default'}>
+            <AppstoreOutlined /> {v}
+          </Tag>
+        ),
+      },
       {
         title: '手术记录数',
         dataIndex: 'recordCount',
@@ -369,8 +507,19 @@ const AnalyticsDashboard: React.FC = () => {
           <Progress percent={v || 0} size="small" status={v >= 80 ? 'success' : v >= 60 ? 'normal' : 'exception'} />
         ),
       },
+      {
+        title: '准确率',
+        dataIndex: 'avgAccuracyRate',
+        key: 'avgAccuracyRate',
+        width: 180,
+        render: (v: number) => (
+          <Progress percent={v || 0} size="small" strokeColor="#722ed1" />
+        ),
+        sorter: (a: SurgeryTypeStats, b: SurgeryTypeStats) =>
+          (a.avgAccuracyRate || 0) - (b.avgAccuracyRate || 0),
+      },
     ]
-  }, [drillDimension])
+  }, [drillDimension, selectedDrillItem])
 
   const drillDataSource = useMemo(() => {
     if (!data) return []
@@ -379,32 +528,131 @@ const AnalyticsDashboard: React.FC = () => {
     return data.surgeryTypeStats || []
   }, [data, drillDimension])
 
+  const drillSideChart = useMemo(() => {
+    if (!data) return null
+
+    if (drillDimension === 'department') {
+      return departmentBarOption
+    }
+
+    if (drillDimension === 'surgeon') {
+      if (!data.surgeonStats?.length) return null
+      const list = selectedDrillItem
+        ? data.surgeonStats.filter((s) => s.surgeon === selectedDrillItem)
+        : [...data.surgeonStats].sort((a, b) => b.recordCount - a.recordCount).slice(0, 10)
+      return {
+        tooltip: { trigger: 'axis' },
+        legend: { data: ['手术数', '时间节省率(%)'], top: 0 },
+        grid: { left: 100, right: 40, top: 40, bottom: 30 },
+        xAxis: { type: 'value' },
+        yAxis: {
+          type: 'category',
+          data: list.map((s) => s.surgeon),
+        },
+        series: [
+          {
+            name: '手术数',
+            type: 'bar',
+            data: list.map((s) => s.recordCount),
+            itemStyle: { color: '#1677ff' },
+          },
+          {
+            name: '时间节省率(%)',
+            type: 'bar',
+            data: list.map((s) => s.avgTimeSavedRate || 0),
+            itemStyle: { color: '#52c41a' },
+          },
+        ],
+      } as EChartsOption
+    }
+
+    if (drillDimension === 'surgeryType') {
+      if (!data.surgeryTypeStats?.length) return null
+      const list = selectedDrillItem
+        ? data.surgeryTypeStats.filter((s) => s.surgeryName === selectedDrillItem)
+        : [...data.surgeryTypeStats].sort((a, b) => b.recordCount - a.recordCount).slice(0, 10)
+      return {
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        legend: { data: ['手术数', '覆盖率(%)', '准确率(%)'], top: 0 },
+        grid: { left: 140, right: 40, top: 40, bottom: 30 },
+        xAxis: { type: 'value' },
+        yAxis: {
+          type: 'category',
+          data: list.map((s) => s.surgeryName),
+        },
+        series: [
+          {
+            name: '手术数',
+            type: 'bar',
+            data: list.map((s) => s.recordCount),
+            itemStyle: { color: '#1677ff' },
+          },
+          {
+            name: '覆盖率(%)',
+            type: 'bar',
+            data: list.map((s) => s.coverageRate || 0),
+            itemStyle: { color: '#52c41a' },
+          },
+          {
+            name: '准确率(%)',
+            type: 'bar',
+            data: list.map((s) => s.avgAccuracyRate || 0),
+            itemStyle: { color: '#722ed1' },
+          },
+        ],
+      } as EChartsOption
+    }
+
+    return null
+  }, [data, drillDimension, selectedDrillItem, departmentBarOption])
+
   return (
     <div className="page-container">
       <Card style={{ marginBottom: 16 }}>
-        <Space wrap size={16}>
-          <Space>
-            <Text strong>时间范围：</Text>
-            <RangePicker
-              value={dateRange}
-              onChange={(v) => v && setDateRange(v as [Dayjs, Dayjs])}
-              allowClear={false}
-            />
+        <Space wrap size={16} style={{ width: '100%', justifyContent: 'space-between' }}>
+          <Space wrap size={16}>
+            <Space>
+              <Text strong>时间范围：</Text>
+              <RangePicker
+                value={dateRange}
+                onChange={(v) => v && setDateRange(v as [Dayjs, Dayjs])}
+                allowClear={false}
+              />
+            </Space>
+            <Space>
+              <Text strong>科室：</Text>
+              <Select
+                style={{ width: 180 }}
+                placeholder="全部科室"
+                allowClear
+                value={selectedDepartment}
+                onChange={setSelectedDepartment}
+                options={departmentOptions}
+              />
+            </Space>
+            <Space>
+              <Text strong>字段类型：</Text>
+              <Select
+                style={{ width: 180 }}
+                placeholder="全部字段"
+                allowClear
+                value={selectedEntityType}
+                onChange={setSelectedEntityType}
+                options={entityTypeOptions}
+              />
+            </Space>
+            <Tag color="blue" icon={<BarChartOutlined />}>
+              质控统计仪表盘
+            </Tag>
           </Space>
           <Space>
-            <Text strong>科室：</Text>
-            <Select
-              style={{ width: 180 }}
-              placeholder="全部科室"
-              allowClear
-              value={selectedDepartment}
-              onChange={setSelectedDepartment}
-              options={departmentOptions}
-            />
+            <Button icon={<ReloadOutlined />} onClick={loadData}>
+              刷新
+            </Button>
+            <Button type="primary" icon={<DownloadOutlined />} loading={exportLoading} onClick={handleExport}>
+              导出报表
+            </Button>
           </Space>
-          <Tag color="blue" icon={<BarChartOutlined />}>
-            质控统计仪表盘
-          </Tag>
         </Space>
       </Card>
 
@@ -487,7 +735,7 @@ const AnalyticsDashboard: React.FC = () => {
               }
               size="small"
             >
-              {coverageOption ? (
+              {coverageOption && Object.keys(coverageOption).length ? (
                 <ReactECharts option={coverageOption} style={{ height: 280 }} />
               ) : (
                 <Empty description="暂无数据" style={{ padding: '60px 0' }} />
@@ -504,7 +752,7 @@ const AnalyticsDashboard: React.FC = () => {
               }
               size="small"
             >
-              {efficiencyOption ? (
+              {efficiencyOption && Object.keys(efficiencyOption).length ? (
                 <ReactECharts option={efficiencyOption} style={{ height: 280 }} />
               ) : (
                 <Empty description="暂无数据" style={{ padding: '60px 0' }} />
@@ -521,7 +769,7 @@ const AnalyticsDashboard: React.FC = () => {
               }
               size="small"
             >
-              {accuracyOption ? (
+              {accuracyOption && Object.keys(accuracyOption).length ? (
                 <ReactECharts option={accuracyOption} style={{ height: 280 }} />
               ) : (
                 <Empty description="暂无数据" style={{ padding: '60px 0' }} />
@@ -541,7 +789,7 @@ const AnalyticsDashboard: React.FC = () => {
               }
               size="small"
             >
-              {wordCloudOption ? (
+              {wordCloudOption && Object.keys(wordCloudOption).length ? (
                 <ReactECharts option={wordCloudOption} style={{ height: 320 }} />
               ) : (
                 <Empty description="暂无手术数据" style={{ padding: '80px 0' }} />
@@ -563,7 +811,7 @@ const AnalyticsDashboard: React.FC = () => {
                 </Tooltip>
               }
             >
-              {lowConfidenceOption ? (
+              {lowConfidenceOption && Object.keys(lowConfidenceOption).length ? (
                 <ReactECharts option={lowConfidenceOption} style={{ height: 320 }} />
               ) : (
                 <Empty description="暂无异常数据" style={{ padding: '80px 0' }} />
@@ -574,7 +822,7 @@ const AnalyticsDashboard: React.FC = () => {
 
         <Card
           title={
-            <Space>
+            <Space wrap>
               <PieChartOutlined style={{ color: '#eb2f96' }} />
               <span>维度下钻分析</span>
               <Select
@@ -602,9 +850,19 @@ const AnalyticsDashboard: React.FC = () => {
                   </Space>
                 </Option>
               </Select>
+              {selectedDrillItem && (
+                <Tag closable onClose={() => setSelectedDrillItem(null)} color="blue">
+                  <FilterOutlined /> 已选中: {selectedDrillItem}
+                </Tag>
+              )}
             </Space>
           }
           size="small"
+          extra={
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              点击表格行可联动筛选右侧图表
+            </Text>
+          }
         >
           <Row gutter={[16, 16]}>
             <Col xs={24} lg={14}>
@@ -614,95 +872,24 @@ const AnalyticsDashboard: React.FC = () => {
                 dataSource={drillDataSource as any[]}
                 rowKey={(record: any) => record.department || record.surgeon || record.surgeryName}
                 pagination={{ pageSize: 8, showSizeChanger: false }}
-                scroll={{ x: 600 }}
+                scroll={{ x: 700 }}
+                onRow={(record) => ({
+                  onClick: () => handleDrillRowClick(record),
+                  style: {
+                    cursor: 'pointer',
+                    backgroundColor:
+                      selectedDrillItem === (record.department || record.surgeon || record.surgeryName)
+                        ? '#e6f4ff'
+                        : undefined,
+                  },
+                })}
               />
             </Col>
             <Col xs={24} lg={10}>
-              {departmentBarOption && drillDimension === 'department' && (
-                <ReactECharts option={departmentBarOption} style={{ height: 360 }} />
-              )}
-              {drillDimension === 'surgeon' && data?.surgeonStats?.length && (
-                <ReactECharts
-                  option={{
-                    tooltip: { trigger: 'axis' },
-                    legend: { data: ['手术数', '时间节省率'], top: 0 },
-                    grid: { left: 100, right: 40, top: 40, bottom: 30 },
-                    xAxis: { type: 'value' },
-                    yAxis: {
-                      type: 'category',
-                      data: [...data.surgeonStats]
-                        .sort((a, b) => b.recordCount - a.recordCount)
-                        .slice(0, 10)
-                        .map((s) => s.surgeon),
-                    },
-                    series: [
-                      {
-                        name: '手术数',
-                        type: 'bar',
-                        data: [...data.surgeonStats]
-                          .sort((a, b) => b.recordCount - a.recordCount)
-                          .slice(0, 10)
-                          .map((s) => s.recordCount),
-                        itemStyle: { color: '#1677ff' },
-                      },
-                      {
-                        name: '时间节省率(%)',
-                        type: 'bar',
-                        data: [...data.surgeonStats]
-                          .sort((a, b) => b.recordCount - a.recordCount)
-                          .slice(0, 10)
-                          .map((s) => s.avgTimeSavedRate || 0),
-                        itemStyle: { color: '#52c41a' },
-                      },
-                    ],
-                  }}
-                  style={{ height: 360 }}
-                />
-              )}
-              {drillDimension === 'surgeryType' && data?.surgeryTypeStats?.length && (
-                <ReactECharts
-                  option={{
-                    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-                    grid: { left: 140, right: 40, top: 20, bottom: 30 },
-                    xAxis: { type: 'value' },
-                    yAxis: {
-                      type: 'category',
-                      data: [...data.surgeryTypeStats]
-                        .sort((a, b) => b.recordCount - a.recordCount)
-                        .slice(0, 10)
-                        .map((s) => s.surgeryName),
-                    },
-                    series: [
-                      {
-                        type: 'bar',
-                        data: [...data.surgeryTypeStats]
-                          .sort((a, b) => b.recordCount - a.recordCount)
-                          .slice(0, 10)
-                          .map((s) => ({
-                            value: s.recordCount,
-                            itemStyle: {
-                              color:
-                                (s.coverageRate || 0) >= 80
-                                  ? '#52c41a'
-                                  : (s.coverageRate || 0) >= 60
-                                    ? '#1677ff'
-                                    : '#ff4d4f',
-                            },
-                          })),
-                        label: {
-                          show: true,
-                          position: 'right',
-                          formatter: (p: any) =>
-                            `覆盖 ${(
-                              data.surgeryTypeStats!.sort((a, b) => b.recordCount - a.recordCount)[p.dataIndex]
-                                .coverageRate || 0
-                            ).toFixed(0)}%`,
-                        },
-                      },
-                    ],
-                  }}
-                  style={{ height: 360 }}
-                />
+              {drillSideChart && Object.keys(drillSideChart).length ? (
+                <ReactECharts option={drillSideChart} style={{ height: 360 }} />
+              ) : (
+                <Empty description="暂无数据" style={{ padding: '100px 0' }} />
               )}
             </Col>
           </Row>
