@@ -7,6 +7,7 @@ import {
   UserOutlined,
   LogoutOutlined,
   SettingOutlined,
+  ExportOutlined,
   BellOutlined,
   MedicineBoxOutlined,
   FileMarkdownOutlined,
@@ -60,6 +61,12 @@ const MainLayout: React.FC = () => {
       onClick: () => navigate('/feedback'),
     },
     {
+      key: '/export-templates',
+      icon: <ExportOutlined />,
+      label: '导出模板配置',
+      onClick: () => navigate('/export-templates'),
+    },
+    {
       key: '/batch',
       icon: <InboxOutlined />,
       label: '批量处理任务',
@@ -105,6 +112,7 @@ const MainLayout: React.FC = () => {
     if (path.startsWith('/quality-control')) return '/quality-control'
     if (path.startsWith('/analytics')) return '/analytics'
     if (path.startsWith('/feedback')) return '/feedback'
+    if (path.startsWith('/export-templates')) return '/export-templates'
     if (path.startsWith('/batch')) return '/batch'
     if (path.startsWith('/qc-report-templates')) return '/qc-report-templates'
     return path

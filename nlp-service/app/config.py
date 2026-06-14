@@ -29,6 +29,21 @@ class Settings(BaseSettings):
     regex_rules_file: str = "./config/regex_rules.json"
     dict_dir: str = "./config/dicts"
 
+    db_host: str = os.getenv("DB_HOST", "localhost")
+    db_port: int = int(os.getenv("DB_PORT", "3306"))
+    db_user: str = os.getenv("DB_USER", "root")
+    db_password: str = os.getenv("DB_PASSWORD", "")
+    db_name: str = os.getenv("DB_NAME", "surg_extract_nlp")
+
+    train_script_path: str = os.getenv("TRAIN_SCRIPT_PATH", "./scripts/incremental_finetune.py")
+    train_model_dir: str = os.getenv("TRAIN_MODEL_DIR", "./models/surgery-ner")
+    train_output_dir: str = os.getenv("TRAIN_OUTPUT_DIR", "./models/surgery-ner-finetuned")
+    train_base_data: str = os.getenv("TRAIN_BASE_DATA", "")
+
+    weekly_train_enabled: bool = os.getenv("WEEKLY_TRAIN_ENABLED", "false").lower() == "true"
+    weekly_train_day: int = int(os.getenv("WEEKLY_TRAIN_DAY", "1"))
+    weekly_train_hour: int = int(os.getenv("WEEKLY_TRAIN_HOUR", "2"))
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

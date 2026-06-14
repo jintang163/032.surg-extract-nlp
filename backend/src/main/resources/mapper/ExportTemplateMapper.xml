@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.surg.extract.mapper.ExportTemplateMapper">
+
+    <resultMap id="BaseResultMap" type="com.surg.extract.entity.ExportTemplate">
+        <id column="id" property="id"/>
+        <result column="template_name" property="templateName"/>
+        <result column="template_code" property="templateCode"/>
+        <result column="description" property="description"/>
+        <result column="export_format" property="exportFormat"/>
+        <result column="target_system" property="targetSystem"/>
+        <result column="department" property="department"/>
+        <result column="field_configs" property="fieldConfigs"/>
+        <result column="unit_conversions" property="unitConversions"/>
+        <result column="sort_order" property="sortOrder"/>
+        <result column="is_default" property="isDefault"/>
+        <result column="enabled" property="enabled"/>
+        <result column="create_user_id" property="createUserId"/>
+        <result column="create_user_name" property="createUserName"/>
+        <result column="created_time" property="createdTime"/>
+        <result column="updated_time" property="updatedTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <select id="selectByConditions" resultMap="BaseResultMap">
+        SELECT * FROM export_template
+        WHERE deleted = 0
+        <if test="exportFormat != null and exportFormat != ''">
+            AND export_format = #{exportFormat}
+        </if>
+        <if test="department != null and department != ''">
+            AND department = #{department}
+        </if>
+        <if test="enabled != null">
+            AND enabled = #{enabled}
+        </if>
+        ORDER BY is_default DESC, sort_order ASC, id DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countByConditions" resultType="long">
+        SELECT COUNT(*) FROM export_template
+        WHERE deleted = 0
+        <if test="exportFormat != null and exportFormat != ''">
+            AND export_format = #{exportFormat}
+        </if>
+        <if test="department != null and department != ''">
+            AND department = #{department}
+        </if>
+        <if test="enabled != null">
+            AND enabled = #{enabled}
+        </if>
+    </select>
+
+</mapper>

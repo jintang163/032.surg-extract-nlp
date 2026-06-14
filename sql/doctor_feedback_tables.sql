@@ -18,6 +18,7 @@ CREATE TABLE `doctor_feedback` (
     `original_source`       VARCHAR(32)     DEFAULT NULL COMMENT '原始来源: MODEL/REGEX/RULE',
     `original_start_pos`   INT             DEFAULT NULL COMMENT '原始起始位置',
     `original_end_pos`     INT             DEFAULT NULL COMMENT '原始结束位置',
+    `original_text`        VARCHAR(512)    DEFAULT NULL COMMENT '原文片段(含上下文)',
     `corrected_value`       VARCHAR(512)    DEFAULT NULL COMMENT '医生修正后的值',
     `corrected_unit`        VARCHAR(32)     DEFAULT NULL COMMENT '修正后单位',
     `correction_type`     VARCHAR(32)     DEFAULT NULL COMMENT '修正类型: CORRECTION-修改, ADDITION-新增, DELETION-删除',

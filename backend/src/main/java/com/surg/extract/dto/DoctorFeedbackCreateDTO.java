@@ -27,6 +27,8 @@ public class DoctorFeedbackCreateDTO implements Serializable {
 
     private Integer originalEndPos;
 
+    private String originalText;
+
     private String correctedValue;
 
     private String correctedUnit;

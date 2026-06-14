@@ -219,7 +219,7 @@ public class DoctorFeedbackService {
         );
 
         StringBuilder sb = new StringBuilder();
-        sb.append("id\trecord_id\tentity_type\toriginal_value\tcorrected_value\tcorrection_type\toriginal_confidence\tquality_score\n");
+        sb.append("id\trecord_id\tentity_type\toriginal_value\tcorrected_value\tcorrection_type\toriginal_confidence\toriginal_text\tstart_pos\tend_pos\tquality_score\n");
         for (DoctorFeedback fb : feedbackList) {
             sb.append(fb.getId()).append("\t");
             sb.append(fb.getRecordId()).append("\t");
@@ -228,6 +228,9 @@ public class DoctorFeedbackService {
             sb.append(nullToEmpty(fb.getCorrectedValue())).append("\t");
             sb.append(nullToEmpty(fb.getCorrectionType())).append("\t");
             sb.append(fb.getOriginalConfidence() != null ? fb.getOriginalConfidence().toPlainString() : "").append("\t");
+            sb.append(nullToEmpty(fb.getOriginalText())).append("\t");
+            sb.append(fb.getOriginalStartPos() != null ? fb.getOriginalStartPos() : "").append("\t");
+            sb.append(fb.getOriginalEndPos() != null ? fb.getOriginalEndPos() : "").append("\t");
             sb.append(fb.getQualityScore() != null ? fb.getQualityScore() : "").append("\n");
         }
         return sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);

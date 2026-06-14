@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 import sys
@@ -571,79 +571,177 @@ async def api_custom_ner_extract(
 @app.post("/api/v1/ner/incremental-train", tags=["实体抽取", "主动学习"])
 async def api_incremental_train(
     train_data: dict,
-    params: dict = None
+    x_train_params: str = Header(None, alias="X-Train-Params")
 ):
-    """基于医生反馈数据的增量微调训练接口"""
+    """基于医生反馈数据的增量微调训练接口 - 调用真实训练脚本"""
     import subprocess
     import sys
     import os
     import json
     from datetime import datetime
-    import random
+    import threading
+
+    params = {}
+    if x_train_params:
+        try:
+            params = json.loads(x_train_params)
+        except Exception:
+            params = {}
 
     logger.info(f"增量训练请求: 反馈样本数={len(train_data.get('samples', []))}")
 
     try:
         samples = train_data.get("samples", [])
+        sample_count = len(samples)
         epochs = (params or {}).get("epochs", 10)
         batch_size = (params or {}).get("batchSize", 16)
         learning_rate = (params or {}).get("learningRate", 0.001)
+        train_type = (params or {}).get("trainType", "INCREMENTAL")
+        min_quality = (params or {}).get("minQualityScore", 60)
+        max_feedback = (params or {}).get("maxFeedbackCount", 5000)
 
-        sample_count = len(samples)
-        entity_type_stats = {}
-        for s in samples:
-            et = s.get("entityType", "UNKNOWN")
-            if et not in entity_type_stats:
-                entity_type_stats[et] = {"CORRECTION": 0, "ADDITION": 0, "DELETION": 0, "total": 0}
-            ct = s.get("correctionType", "CORRECTION")
-            entity_type_stats[et][ct] = entity_type_stats[et].get(ct, 0) + 1
-            entity_type_stats[et]["total"] += 1
+        batch_no = f"TRAIN-{datetime.now().strftime('%Y%m%d')}-{__import__('random').randint(1000,9999)}"
 
-        base_f1 = 0.8765
-        improvement = min(0.02, 0.001 * sample_count + 0.002)
-        new_f1 = min(0.98, base_f1 + improvement)
+        feedback_dir = os.path.join(settings.temp_dir, "train_feedback", batch_no)
+        os.makedirs(feedback_dir, exist_ok=True)
 
-        version = f"v{datetime.now().strftime('%Y%m%d')}.{random.randint(1000, 9999)}"
-        model_dir = f"./models/surgery-ner-{version}"
+        feedback_file = os.path.join(feedback_dir, "feedback_samples.json")
+        with open(feedback_file, "w", encoding="utf-8") as f:
+            json.dump(samples, f, ensure_ascii=False, indent=2)
 
-        entity_breakdown = {}
-        for et, stats in entity_type_stats.items():
-            entity_breakdown[et] = {
-                "precision": round(min(0.99, 0.85 + random.uniform(0, 0.13)), 4),
-                "recall": round(min(0.99, 0.82 + random.uniform(0, 0.15)), 4),
-                "f1": round(min(0.99, 0.83 + random.uniform(0, 0.14)), 4),
-                "sampleCount": stats["total"]
-            }
+        cmd = [
+            sys.executable,
+            settings.train_script_path,
+            "--db_host", settings.db_host,
+            "--db_port", str(settings.db_port),
+            "--db_user", settings.db_user,
+            "--db_password", settings.db_password,
+            "--db_name", settings.db_name,
+            "--model_dir", settings.train_model_dir,
+            "--output_dir", settings.train_output_dir,
+            "--epochs", str(epochs),
+            "--batch_size", str(batch_size),
+            "--learning_rate", str(learning_rate),
+            "--max_feedback", str(max_feedback),
+            "--min_quality", str(min_quality),
+            "--train_type", train_type,
+            "--feedback_file", feedback_file,
+        ]
 
-        result = {
+        if settings.train_base_data:
+            cmd.extend(["--train_data", settings.train_base_data])
+
+        logger.info(f"启动训练脚本: {' '.join(cmd)}")
+
+        result_file = os.path.join(feedback_dir, "train_result.json")
+        log_file = os.path.join(feedback_dir, "train.log")
+
+        def run_training():
+            try:
+                with open(log_file, "w", encoding="utf-8") as log_f:
+                    process = subprocess.Popen(
+                        cmd,
+                        stdout=log_f,
+                        stderr=subprocess.STDOUT,
+                        cwd=os.path.dirname(settings.train_script_path) or ".",
+                        env={**os.environ, "PYTHONUNBUFFERED": "1"}
+                    )
+                    return_code = process.wait()
+
+                result = {
+                    "success": return_code == 0,
+                    "trainBatchNo": batch_no,
+                    "returnCode": return_code,
+                }
+
+                output_result = os.path.join(settings.train_output_dir, "train_result.json")
+                if os.path.exists(output_result):
+                    with open(output_result, "r", encoding="utf-8") as f:
+                        script_result = json.load(f)
+                    result.update(script_result)
+
+                if return_code != 0 and os.path.exists(log_file):
+                    with open(log_file, "r", encoding="utf-8") as f:
+                        tail = f.read()[-2000:]
+                    result["failReason"] = tail
+
+                with open(result_file, "w", encoding="utf-8") as f:
+                    json.dump(result, f, ensure_ascii=False, indent=2)
+
+                logger.info(f"训练脚本完成: batchNo={batch_no}, returnCode={return_code}")
+            except Exception as e:
+                logger.error(f"训练脚本执行异常: {e}", exc_info=True)
+                error_result = {
+                    "success": False,
+                    "trainBatchNo": batch_no,
+                    "failReason": str(e),
+                }
+                with open(result_file, "w", encoding="utf-8") as f:
+                    json.dump(error_result, f, ensure_ascii=False, indent=2)
+
+        train_thread = threading.Thread(target=run_training, daemon=True)
+        train_thread.start()
+
+        return {
             "success": True,
-            "trainBatchNo": f"TRAIN-{datetime.now().strftime('%Y%m%d')}-{random.randint(1000, 9999)}",
-            "modelVersion": version,
-            "trainLoss": round(0.08 + random.uniform(-0.03, 0.03), 6),
-            "devLoss": round(0.11 + random.uniform(-0.03, 0.03), 6),
-            "precision": round(min(0.99, 0.90 + random.uniform(0, 0.08)), 4),
-            "recall": round(min(0.99, 0.88 + random.uniform(0, 0.09)), 4),
-            "f1": round(new_f1, 4),
-            "f1Improvement": round(improvement, 4),
-            "trainDurationSec": sample_count * 3 + 30,
+            "trainBatchNo": batch_no,
+            "message": "训练任务已启动，脚本正在后台执行",
             "feedbackCount": sample_count,
-            "sampleCount": sample_count + 2000,
-            "modelPath": model_dir,
-            "entityBreakdown": entity_breakdown,
-            "epochs": epochs,
-            "batchSize": batch_size,
-            "learningRate": learning_rate
+            "logFile": log_file,
+            "resultFile": result_file,
         }
-
-        logger.info(f"增量训练完成: version={version}, f1={result['f1']}, improvement={result['f1Improvement']}")
-        return result
 
     except Exception as e:
-        logger.error(f"增量训练异常: {e}", exc_info=True)
+        logger.error(f"启动训练异常: {e}", exc_info=True)
         return {
             "success": False,
-            "message": f"增量训练失败: {str(e)}"
+            "message": f"启动训练失败: {str(e)}"
         }
+
+
+@app.get("/api/v1/ner/incremental-train/status", tags=["实体抽取", "主动学习"])
+async def api_incremental_train_status(batch_no: str):
+    """查询增量训练任务状态"""
+    import os
+    import json
+
+    feedback_dir = os.path.join(settings.temp_dir, "train_feedback", batch_no)
+    result_file = os.path.join(feedback_dir, "train_result.json")
+    log_file = os.path.join(feedback_dir, "train.log")
+
+    result = {"batchNo": batch_no, "status": "UNKNOWN"}
+
+    if os.path.exists(result_file):
+        with open(result_file, "r", encoding="utf-8") as f:
+            train_result = json.load(f)
+        result["status"] = "COMPLETED" if train_result.get("success") else "FAILED"
+        result["result"] = train_result
+    elif os.path.exists(log_file):
+        result["status"] = "RUNNING"
+        with open(log_file, "r", encoding="utf-8") as f:
+            content = f.read()
+        result["logTail"] = content[-2000:] if content else ""
+    else:
+        result["status"] = "NOT_FOUND"
+
+    return result
+
+
+@app.post("/api/v1/ner/weekly-train", tags=["实体抽取", "主动学习"])
+async def api_weekly_train():
+    """触发周度自动训练（由定时调度或手动触发）"""
+    logger.info("周度自动训练触发")
+
+    train_data = {"samples": []}
+    params = {
+        "trainType": "WEEKLY",
+        "epochs": 10,
+        "batchSize": 16,
+        "learningRate": 0.001,
+        "minQualityScore": 60,
+        "maxFeedbackCount": 5000,
+    }
+    return await api_incremental_train(train_data, params)
 
 
 if __name__ == "__main__":

@@ -1228,6 +1228,7 @@ export interface DoctorFeedbackCreateRequest {
   originalSource?: string
   originalStartPos?: number
   originalEndPos?: number
+  originalText?: string
   correctedValue?: string
   correctedUnit?: string
   correctionType: CorrectionType
@@ -1336,4 +1337,207 @@ export interface FeedbackDashboardData {
   correctionTypeStats: CorrectionTypeStats[]
   topDoctors: DoctorFeedbackStats[]
   recentTrainLogs: ModelTrainLog[]
+}
+
+export type ExportFormat = 'EXCEL' | 'JSON' | 'FHIR'
+
+export const ExportFormatMap: Record<ExportFormat, { label: string; color: string; icon: string; mimeType: string }> = {
+  EXCEL: { label: 'Excel', color: 'green', icon: 'FileExcelOutlined', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+  JSON: { label: 'JSON', color: 'blue', icon: 'CodeOutlined', mimeType: 'application/json' },
+  FHIR: { label: 'HL7 FHIR', color: 'purple', icon: 'ApiOutlined', mimeType: 'application/json' },
+}
+
+export interface ExportFieldConfig {
+  fieldCode: string
+  fieldLabel: string
+  sourceTable?: string
+  sourceField?: string
+  fhirPath?: string
+  dataType: 'STRING' | 'INTEGER' | 'DECIMAL' | 'DATE' | 'DATETIME' | 'BOOLEAN'
+  unit?: string
+  targetUnit?: string
+  conversionFormula?: string
+  sortOrder: number
+  enabled: number
+  required?: number
+  defaultValue?: string
+  valueMapping?: string
+}
+
+export interface UnitConversion {
+  fieldCode: string
+  sourceUnit: string
+  targetUnit: string
+  formula?: string
+  multiplyFactor?: number
+  addOffset?: number
+  decimalPlaces?: number
+}
+
+export interface ExportTemplate {
+  id: number
+  templateName: string
+  templateCode?: string
+  description?: string
+  exportFormat: ExportFormat
+  exportFormatLabel?: string
+  targetSystem?: string
+  department?: string
+  fieldConfigs: ExportFieldConfig[]
+  unitConversions?: UnitConversion[]
+  sortOrder?: number
+  isDefault?: number
+  enabled: number
+  createUserId?: number
+  createUserName?: string
+  createdTime: string
+  updatedTime: string
+}
+
+export interface ExportTemplateCreateForm {
+  templateName: string
+  templateCode?: string
+  description?: string
+  exportFormat: ExportFormat
+  targetSystem?: string
+  department?: string
+  fieldConfigs: ExportFieldConfig[]
+  unitConversions?: UnitConversion[]
+  sortOrder?: number
+  isDefault?: number
+  enabled?: number
+}
+
+export interface StandardHomePage {
+  patientId?: string
+  patientName?: string
+  gender?: string
+  age?: number
+  idCardNo?: string
+  hospitalNo?: string
+  admissionDate?: string
+  dischargeDate?: string
+  admissionDays?: number
+  department?: string
+  bedNo?: string
+  admissionDiagnosis?: string
+  dischargeDiagnosis?: string
+  surgeryDate?: string
+  surgeryName?: string
+  surgeryCode?: string
+  surgeryLevel?: string
+  incisionLevel?: string
+  incisionHealing?: string
+  anesthesiaType?: string
+  anesthesiaCode?: string
+  bloodLoss?: number
+  bloodLossUnit?: string
+  bloodTransfusion?: number
+  bloodTransfusionUnit?: string
+  fluidInfusion?: number
+  fluidInfusionUnit?: string
+  surgeon?: string
+  chiefSurgeon?: string
+  assistant1?: string
+  assistant2?: string
+  anesthesiologist?: string
+  scrubNurse?: string
+  circulatingNurse?: string
+  criticalPatient?: number
+  hospitalizationFee?: number
+  surgeryFee?: number
+  anesthesiaFee?: number
+  drugFee?: number
+  examFee?: number
+  treatmentFee?: number
+  bedFee?: number
+  otherFee?: number
+  status?: string
+  recordNo?: string
+  extractTime?: string
+}
+
+export interface FhirIdentifier {
+  system?: string
+  value?: string
+  use?: string
+}
+
+export interface FhirCoding {
+  system?: string
+  code?: string
+  display?: string
+}
+
+export interface FhirCodeableConcept {
+  coding?: FhirCoding[]
+  text?: string
+}
+
+export interface FhirReference {
+  reference?: string
+  display?: string
+}
+
+export interface FhirPeriod {
+  start?: string
+  end?: string
+}
+
+export interface FhirHumanName {
+  use?: string
+  family?: string
+  given?: string[]
+}
+
+export interface FhirPatient {
+  resourceType: 'Patient'
+  id?: string
+  identifier?: FhirIdentifier[]
+  name?: FhirHumanName[]
+  gender?: string
+  birthDate?: string
+  active?: boolean
+}
+
+export interface FhirEncounter {
+  resourceType: 'Encounter'
+  id?: string
+  identifier?: FhirIdentifier[]
+  status?: string
+  class?: FhirCodeableConcept
+  subject?: FhirReference
+  period?: FhirPeriod
+}
+
+export interface FhirProcedurePerformer {
+  function?: FhirCodeableConcept
+  actor?: FhirReference
+}
+
+export interface FhirProcedure {
+  resourceType: 'Procedure'
+  id?: string
+  identifier?: FhirIdentifier[]
+  status?: string
+  code?: FhirCodeableConcept
+  subject?: FhirReference
+  encounter?: FhirReference
+  performedPeriod?: FhirPeriod
+  performer?: FhirProcedurePerformer[]
+}
+
+export type FhirResource = FhirPatient | FhirEncounter | FhirProcedure
+
+export interface FhirBundleEntry {
+  fullUrl?: string
+  resource: FhirResource
+}
+
+export interface FhirBundle {
+  resourceType: 'Bundle'
+  type?: string
+  id?: string
+  timestamp?: string
+  entry?: FhirBundleEntry[]
 }

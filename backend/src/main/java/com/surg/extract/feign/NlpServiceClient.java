@@ -63,6 +63,6 @@ public interface NlpServiceClient {
     @PostMapping("/ner/incremental-train")
     Map<String, Object> triggerIncrementalTraining(
             @RequestBody Map<String, Object> trainData,
-            @RequestParam Map<String, Object> params
+            @RequestHeader("X-Train-Params") String paramsJson
     );
 }

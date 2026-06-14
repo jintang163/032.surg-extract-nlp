@@ -143,7 +143,7 @@ class FeedbackDataLoader:
                     SELECT id, record_id, entity_type, original_value, original_unit,
                            original_confidence, corrected_value, corrected_unit,
                            correction_type, original_start_pos, original_end_pos,
-                           quality_score, department
+                           original_text, quality_score, department
                     FROM doctor_feedback
                     WHERE deleted = 0 AND used_for_training = 0
                       AND quality_score >= %s
@@ -315,6 +315,9 @@ def convert_feedback_to_training_samples(
         correction_type = fb.get("correction_type", "CORRECTION")
         corrected_value = fb.get("corrected_value", "")
         original_value = fb.get("original_value", "")
+        original_text = fb.get("original_text", "")
+        original_start_pos = fb.get("original_start_pos")
+        original_end_pos = fb.get("original_end_pos")
 
         if correction_type == "DELETION":
             continue
@@ -322,23 +325,33 @@ def convert_feedback_to_training_samples(
         if not corrected_value or not entity_type:
             continue
 
-        template = random.choice(default_contexts)
-        text = template.format(
-            name=corrected_value if entity_type == "PATIENT_NAME" else "张三",
-            gender=corrected_value if entity_type == "GENDER" else "男",
-            age=corrected_value if entity_type == "AGE" else "56",
-            hosp_no=corrected_value if entity_type == "HOSPITAL_NO" else "ZY202401001",
-            date=corrected_value if entity_type == "SURGERY_DATE" else "2024-01-15",
-            anes=corrected_value if entity_type == "ANESTHESIA_TYPE" else "全身麻醉",
-            surgery=corrected_value if entity_type == "SURGERY_NAME" else "腹腔镜阑尾切除术",
-            surgeon=corrected_value if entity_type == "SURGEON" else "李主任",
-            assistant=corrected_value if entity_type == "ASSISTANT" else "王医生",
-            blood=corrected_value if entity_type == "BLOOD_LOSS" else "150ml",
-            fluid=corrected_value if entity_type == "FLUID_INFUSION" else "2000ml",
-            transfusion=corrected_value if entity_type == "BLOOD_TRANSFUSION" else "0ml",
-            incision=corrected_value if entity_type == "INCISION_LEVEL" else "Ⅰ类",
-            healing=corrected_value if entity_type == "INCISION_HEALING" else "良好",
-        )
+        text = None
+
+        if original_text and corrected_value in original_text:
+            text = original_text
+        elif original_text and original_value and original_value in original_text:
+            text = original_text.replace(original_value, corrected_value, 1)
+        elif original_text:
+            text = original_text
+
+        if text is None:
+            template = random.choice(default_contexts)
+            text = template.format(
+                name=corrected_value if entity_type == "PATIENT_NAME" else "张三",
+                gender=corrected_value if entity_type == "GENDER" else "男",
+                age=corrected_value if entity_type == "AGE" else "56",
+                hosp_no=corrected_value if entity_type == "HOSPITAL_NO" else "ZY202401001",
+                date=corrected_value if entity_type == "SURGERY_DATE" else "2024-01-15",
+                anes=corrected_value if entity_type == "ANESTHESIA_TYPE" else "全身麻醉",
+                surgery=corrected_value if entity_type == "SURGERY_NAME" else "腹腔镜阑尾切除术",
+                surgeon=corrected_value if entity_type == "SURGEON" else "李主任",
+                assistant=corrected_value if entity_type == "ASSISTANT" else "王医生",
+                blood=corrected_value if entity_type == "BLOOD_LOSS" else "150ml",
+                fluid=corrected_value if entity_type == "FLUID_INFUSION" else "2000ml",
+                transfusion=corrected_value if entity_type == "BLOOD_TRANSFUSION" else "0ml",
+                incision=corrected_value if entity_type == "INCISION_LEVEL" else "Ⅰ类",
+                healing=corrected_value if entity_type == "INCISION_HEALING" else "良好",
+            )
 
         chars = list(text)
         labels = ["O"] * len(chars)
@@ -649,9 +662,22 @@ def train_incremental(args):
     db_loader = FeedbackDataLoader(db_config)
     db_connected = db_loader.connect()
 
-    print(f"加载反馈数据 (limit={args.max_feedback}, min_quality={args.min_quality})...")
-    feedback_list = db_loader.fetch_pending_feedback(args.max_feedback, args.min_quality)
-    print(f"获取到 {len(feedback_list)} 条反馈数据")
+    if args.feedback_file and os.path.exists(args.feedback_file):
+        print(f"从外部文件加载反馈数据: {args.feedback_file}")
+        with open(args.feedback_file, "r", encoding="utf-8") as f:
+            feedback_list = json.load(f)
+        if not isinstance(feedback_list, list):
+            feedback_list = []
+        print(f"从文件加载到 {len(feedback_list)} 条反馈数据")
+        if db_connected and feedback_list:
+            feedback_ids = [fb["id"] for fb in feedback_list if isinstance(fb.get("id"), int)]
+            if feedback_ids:
+                db_loader.mark_feedback_used(feedback_ids, batch_no)
+                print(f"已标记 {len(feedback_ids)} 条外部反馈为训练中(used_for_training=1)")
+    else:
+        print(f"加载反馈数据 (limit={args.max_feedback}, min_quality={args.min_quality})...")
+        feedback_list = db_loader.fetch_pending_feedback(args.max_feedback, args.min_quality)
+        print(f"获取到 {len(feedback_list)} 条反馈数据")
 
     feedback_samples = convert_feedback_to_training_samples(feedback_list)
     print(f"生成 {len(feedback_samples)} 条训练样本")
@@ -879,11 +905,11 @@ def train_incremental(args):
         if log_id:
             print(f"训练日志已记录 (ID: {log_id})")
 
-        if feedback_list:
+        if feedback_list and not args.feedback_file:
             feedback_ids = [fb["id"] for fb in feedback_list if isinstance(fb.get("id"), int)]
             if feedback_ids:
                 db_loader.mark_feedback_used(feedback_ids, batch_no)
-                print(f"已标记 {len(feedback_ids)} 条反馈数据为已使用")
+                print(f"已标记 {len(feedback_ids)} 条反馈数据为已使用(训练成功后标记)")
 
     db_loader.close()
 
@@ -936,6 +962,8 @@ def main():
     parser.add_argument("--max_feedback", type=int, default=5000, help="最大反馈数据量")
     parser.add_argument("--min_quality", type=int, default=60, help="最低质量评分")
     parser.add_argument("--train_type", type=str, default="INCREMENTAL", help="训练类型")
+
+    parser.add_argument("--feedback_file", type=str, default=None, help="外部反馈数据文件(JSON)，由API传入，优先于数据库查询")
 
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--no_cuda", action="store_true")

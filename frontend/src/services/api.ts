@@ -13,6 +13,12 @@ import type {
   ModelTrainRequest,
   TrainStatus,
   PageResult,
+  ExportFormat,
+  ExportTemplate,
+  ExportTemplateCreateForm,
+  ExportFieldConfig,
+  StandardHomePage,
+  FhirBundle,
 } from '@/types'
 
 const TOKEN_KEY = 'surg_extract_token'
@@ -686,4 +692,42 @@ export const feedbackApi = {
 
   getTrainList: (params?: { pageNum?: number; pageSize?: number; trainStatus?: TrainStatus }) =>
     http.get<PageResult<ModelTrainLog>>('/feedback/train/list', { params }),
+}
+
+export const exportApi = {
+  listTemplates: (params?: { format?: ExportFormat; department?: string; enabled?: number; pageNum?: number; pageSize?: number }) =>
+    http.get<{ list: ExportTemplate[]; total: number }>('/export/templates', { params }),
+
+  getTemplate: (id: number) =>
+    http.get<ExportTemplate>(`/export/templates/${id}`),
+
+  getAvailableFields: () =>
+    http.get<ExportFieldConfig[]>('/export/templates/available-fields'),
+
+  createTemplate: (data: ExportTemplateCreateForm) =>
+    http.post<ExportTemplate>('/export/templates', data),
+
+  updateTemplate: (id: number, data: ExportTemplateCreateForm) =>
+    http.put<ExportTemplate>(`/export/templates/${id}`, data),
+
+  deleteTemplate: (id: number) =>
+    http.delete<void>(`/export/templates/${id}`),
+
+  exportExcel: (data: { recordIds: number[]; templateId?: number }) =>
+    http.post<BlobPart>('/export/excel', data, { responseType: 'blob' }),
+
+  exportJson: (data: { recordIds: number[]; templateId?: number }) =>
+    http.post<StandardHomePage[]>('/export/json', data),
+
+  exportFhir: (data: { recordIds: number[]; templateId?: number }) =>
+    http.post<FhirBundle>('/export/fhir', data),
+
+  getStandardHomePage: (recordId: number) =>
+    http.get<StandardHomePage>(`/export/standard/homepage/${recordId}`),
+
+  batchGetStandardHomePage: (data: { recordIds: number[] }) =>
+    http.post<StandardHomePage[]>('/export/standard/homepage/batch', data),
+
+  getFhirHomePage: (recordId: number) =>
+    http.get<FhirBundle>(`/export/standard/fhir/${recordId}`),
 }

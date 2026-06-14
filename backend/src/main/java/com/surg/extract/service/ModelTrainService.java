@@ -75,17 +75,15 @@ public class ModelTrainService {
         trainLogMapper.insert(trainLog);
 
         List<Long> feedbackIds = pendingList.stream().map(DoctorFeedback::getId).collect(Collectors.toList());
-        if (!feedbackIds.isEmpty()) {
-            feedbackMapper.markAsUsed(feedbackIds, batchNo);
-        }
 
-        asyncExecuteTraining(trainLog.getId(), pendingList, trainParams);
+        asyncExecuteTraining(trainLog.getId(), pendingList, feedbackIds, trainParams);
 
         return convertToDTO(trainLog);
     }
 
     @Async("taskExecutor")
-    public void asyncExecuteTraining(Long trainLogId, List<DoctorFeedback> feedbackList, Map<String, Object> params) {
+    public void asyncExecuteTraining(Long trainLogId, List<DoctorFeedback> feedbackList,
+                                     List<Long> feedbackIds, Map<String, Object> params) {
         try {
             ModelTrainLog log = trainLogMapper.selectById(trainLogId);
             log.setTrainStatus("RUNNING");
@@ -95,7 +93,7 @@ public class ModelTrainService {
             Map<String, Object> trainData = prepareTrainingData(feedbackList);
             Map<String, Object> result = executePythonTraining(trainData, params);
 
-            log.setTrainStatus("SUCCESS");
+            String batchNo = log.getTrainBatchNo();
             log.setTrainEndTime(LocalDateTime.now());
             log.setTrainDurationSec((int) java.time.Duration.between(log.getTrainStartTime(), log.getTrainEndTime()).getSeconds());
             log.setTrainLoss(result.get("trainLoss") != null ? new BigDecimal(result.get("trainLoss").toString()) : null);
@@ -110,9 +108,20 @@ public class ModelTrainService {
             log.setModelPath(result.get("modelPath") != null ? result.get("modelPath").toString() : null);
             log.setEntityTypeBreakdown(result.get("entityBreakdown") != null ?
                     com.alibaba.fastjson.JSON.toJSONString(result.get("entityBreakdown")) : null);
+
+            boolean success = result.get("success") != null && Boolean.TRUE.equals(result.get("success"));
+            log.setTrainStatus(success ? "SUCCESS" : "FAILED");
+            if (!success) {
+                log.setFailReason(result.get("failReason") != null ? result.get("failReason").toString() : "训练脚本返回失败");
+            }
             trainLogMapper.updateById(log);
 
-            log.info("模型训练完成: batchNo={}, F1={}", log.getTrainBatchNo(), log.getF1Score());
+            if (success && feedbackIds != null && !feedbackIds.isEmpty()) {
+                feedbackMapper.markAsUsed(feedbackIds, batchNo);
+                log.info("训练成功，已标记 {} 条反馈数据为已使用, batchNo={}", feedbackIds.size(), batchNo);
+            }
+
+            log.info("模型训练完成: batchNo={}, status={}, F1={}", log.getTrainBatchNo(), log.getTrainStatus(), log.getF1Score());
         } catch (Exception e) {
             log.error("模型训练失败", e);
             ModelTrainLog log = trainLogMapper.selectById(trainLogId);
@@ -136,6 +145,7 @@ public class ModelTrainService {
             sample.put("correctionType", fb.getCorrectionType());
             sample.put("originalStartPos", fb.getOriginalStartPos());
             sample.put("originalEndPos", fb.getOriginalEndPos());
+            sample.put("originalText", fb.getOriginalText());
             sample.put("qualityScore", fb.getQualityScore());
             return sample;
         }).collect(Collectors.toList());
@@ -145,29 +155,14 @@ public class ModelTrainService {
     }
 
     private Map<String, Object> executePythonTraining(Map<String, Object> trainData, Map<String, Object> params) {
-        Map<String, Object> result = new HashMap<>();
-        try {
-            Map<String, Object> response = nlpServiceClient.triggerIncrementalTraining(trainData, params);
-            if (response != null && response.get("success") != null && (Boolean) response.get("success")) {
-                result.putAll(response);
-            } else {
-                result.put("trainLoss", 0.1234);
-                result.put("devLoss", 0.1567);
-                result.put("precision", 0.9123);
-                result.put("recall", 0.8956);
-                result.put("f1", 0.9038);
-                result.put("modelVersion", "v" + System.currentTimeMillis());
-                result.put("modelPath", "./models/surgery-ner/");
-            }
-        } catch (Exception e) {
-            log.warn("调用NLP服务训练失败，使用模拟结果", e);
-            result.put("trainLoss", 0.1234);
-            result.put("devLoss", 0.1567);
-            result.put("precision", 0.9123);
-            result.put("recall", 0.8956);
-            result.put("f1", 0.9038);
-            result.put("modelVersion", "v" + System.currentTimeMillis());
-            result.put("modelPath", "./models/surgery-ner/");
+        String paramsJson = com.alibaba.fastjson.JSON.toJSONString(params);
+        Map<String, Object> result = nlpServiceClient.triggerIncrementalTraining(trainData, paramsJson);
+        if (result == null) {
+            throw new RuntimeException("NLP训练服务返回空结果");
+        }
+        if (result.get("success") != null && Boolean.FALSE.equals(result.get("success"))) {
+            String msg = result.get("message") != null ? result.get("message").toString() : "训练失败";
+            throw new RuntimeException("NLP训练服务返回失败: " + msg);
         }
         return result;
     }

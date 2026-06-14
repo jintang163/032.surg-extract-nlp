@@ -23,6 +23,7 @@ import {
   Typography,
   Statistic,
   Empty,
+  Dropdown,
 } from 'antd'
 import {
   ArrowLeftOutlined,
@@ -40,9 +41,14 @@ import {
   MergeCellsOutlined,
   FileMarkdownOutlined,
   HistoryOutlined,
+  ExportOutlined,
+  FileExcelOutlined,
+  CodeOutlined,
+  ApiOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
-import { recordApi, templateApi, feedbackApi } from '@/services/api'
+import { recordApi, templateApi, feedbackApi, exportApi } from '@/services/api'
 import type {
   SurgeryRecord,
   SurgeryEntity,
@@ -84,6 +90,7 @@ const RecordDetail: React.FC = () => {
   const [availableTemplates, setAvailableTemplates] = useState<SurgeryTemplate[]>([])
   const [templateLoading, setTemplateLoading] = useState(false)
   const [applyingTemplate, setApplyingTemplate] = useState(false)
+  const [exporting, setExporting] = useState<string | null>(null)
 
   useEffect(() => {
     loadData()
@@ -150,6 +157,15 @@ const RecordDetail: React.FC = () => {
       setEntities(updated)
 
       try {
+        const startPos = originalEntity?.startPos
+        const endPos = originalEntity?.endPos
+        let originalText = originalEntity?.originalText || ''
+        if (!originalText && typeof startPos === 'number' && typeof endPos === 'number' && ocrText) {
+          const ctxStart = Math.max(0, startPos - 20)
+          const ctxEnd = Math.min(ocrText.length, endPos + 20)
+          originalText = ocrText.substring(ctxStart, ctxEnd)
+        }
+
         const feedbackReq: DoctorFeedbackCreateRequest = {
           recordId: recordId,
           entityId: originalEntity?.id,
@@ -158,8 +174,9 @@ const RecordDetail: React.FC = () => {
           originalUnit: originalEntity?.entityUnit,
           originalConfidence: originalEntity?.confidence,
           originalSource: originalEntity?.source,
-          originalStartPos: originalEntity?.startPos,
-          originalEndPos: originalEntity?.endPos,
+          originalStartPos: startPos,
+          originalEndPos: endPos,
+          originalText: originalText,
           correctedValue: values.entityValue,
           correctedUnit: values.entityUnit,
           correctionType: correctionType,
@@ -218,6 +235,75 @@ const RecordDetail: React.FC = () => {
       setApplyingTemplate(false)
     }
   }
+
+  const handleExport = async (format: 'excel' | 'json' | 'fhir') => {
+    setExporting(format)
+    try {
+      if (format === 'excel') {
+        const blob = await exportApi.exportExcel({ recordIds: [recordId] })
+        const url = window.URL.createObjectURL(new Blob([blob]))
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `病案首页_${record?.patientName || '数据'}_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        window.URL.revokeObjectURL(url)
+        message.success('Excel导出成功')
+      } else if (format === 'json') {
+        const data = await exportApi.exportJson({ recordIds: [recordId] })
+        const content = JSON.stringify(data, null, 2)
+        const blob = new Blob([content], { type: 'application/json;charset=utf-8' })
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `病案首页_${record?.patientName || '数据'}_${dayjs().format('YYYYMMDD_HHmmss')}.json`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        window.URL.revokeObjectURL(url)
+        message.success('JSON导出成功')
+      } else if (format === 'fhir') {
+        const data = await exportApi.exportFhir({ recordIds: [recordId] })
+        const content = JSON.stringify(data, null, 2)
+        const blob = new Blob([content], { type: 'application/json;charset=utf-8' })
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `病案首页_FHIR_${record?.patientName || '数据'}_${dayjs().format('YYYYMMDD_HHmmss')}.json`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        window.URL.revokeObjectURL(url)
+        message.success('HL7 FHIR导出成功')
+      }
+    } catch (e) {
+      message.error('导出失败')
+    } finally {
+      setExporting(null)
+    }
+  }
+
+  const exportMenuItems = [
+    {
+      key: 'excel',
+      icon: <FileExcelOutlined style={{ color: '#52c41a' }} />,
+      label: '导出为 Excel',
+      onClick: () => handleExport('excel'),
+    },
+    {
+      key: 'json',
+      icon: <CodeOutlined style={{ color: '#1677ff' }} />,
+      label: '导出为 JSON',
+      onClick: () => handleExport('json'),
+    },
+    {
+      key: 'fhir',
+      icon: <ApiOutlined style={{ color: '#722ed1' }} />,
+      label: '导出为 HL7 FHIR R4',
+      onClick: () => handleExport('fhir'),
+    },
+  ]
 
   const filteredEntities = useMemo(
     () =>
@@ -538,6 +624,19 @@ const RecordDetail: React.FC = () => {
             >
               应用模板
             </Button>
+          )}
+          {(record?.processStatus === 'NER_DONE' || record?.processStatus === 'COMPLETED') && (
+            <Dropdown
+              menu={{ items: exportMenuItems }}
+              trigger={['click']}
+              disabled={!!exporting}
+            >
+              <Button
+                icon={exporting ? <SyncOutlined spin /> : <ExportOutlined />}
+              >
+                {exporting ? `正在导出${exporting.toUpperCase()}...` : '导出数据'}
+              </Button>
+            </Dropdown>
           )}
         </Space>
       </div>

@@ -16,6 +16,7 @@ import QualityControlPage from '@/pages/QualityControlPage'
 import QcReportTemplateList from '@/pages/QcReportTemplateList'
 import QcReportTemplateEditor from '@/pages/QcReportTemplateEditor'
 import FeedbackDashboard from '@/pages/FeedbackDashboard'
+import ExportTemplateManager from '@/pages/ExportTemplateManager'
 import ProtectedRoute from '@/components/ProtectedRoute'
 
 const App: React.FC = () => {
@@ -48,6 +49,7 @@ const App: React.FC = () => {
         <Route path="qc-report-templates/new" element={<QcReportTemplateEditor />} />
         <Route path="qc-report-templates/:id/edit" element={<QcReportTemplateEditor />} />
         <Route path="feedback" element={<FeedbackDashboard />} />
+        <Route path="export-templates" element={<ExportTemplateManager />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
