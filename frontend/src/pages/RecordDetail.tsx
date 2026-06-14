@@ -22,6 +22,7 @@ import {
   Drawer,
   Typography,
   Statistic,
+  Empty,
 } from 'antd'
 import {
   ArrowLeftOutlined,
@@ -38,12 +39,14 @@ import {
   ScissorOutlined,
   MergeCellsOutlined,
   FileMarkdownOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import { recordApi, templateApi } from '@/services/api'
 import type { SurgeryRecord, SurgeryEntity, EntityType, ProcessStatus, SurgeryTemplate } from '@/types'
 import { ProcessStatusMap, EntityTypeLabelMap, SourceMap } from '@/types'
 import dayjs from 'dayjs'
+import CaseComparePanel from '@/components/CaseComparePanel'
 
 const { TextArea } = Input
 const { Title, Text } = Typography
@@ -849,6 +852,17 @@ const RecordDetail: React.FC = () => {
           )}
         </Col>
       </Row>
+
+      {(record?.processStatus === 'NER_DONE' || record?.processStatus === 'COMPLETED') && (
+        <CaseComparePanel
+          recordId={recordId}
+          department={record?.department}
+          entities={entities}
+          onViewCaseDetail={(caseRecordId) => {
+            navigate(`/records/${caseRecordId}`)
+          }}
+        />
+      )}
 
       <Drawer
         title="编辑实体"

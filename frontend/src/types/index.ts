@@ -870,3 +870,99 @@ export const getAllQcFieldOptions = () => {
   })
   return options
 }
+
+export interface SimilarCaseSearchRequest {
+  excludeRecordId?: number
+  surgeryName: string
+  preopDiagnosis?: string
+  postopDiagnosis?: string
+  department?: string
+  timeRangeMonths?: number
+  topN?: number
+  minScore?: number
+}
+
+export interface SimilarCaseResult {
+  recordId: number
+  recordNo: string
+  score: number
+  department?: string
+  surgeryName?: string
+  preopDiagnosis?: string
+  postopDiagnosis?: string
+  surgeryLevel?: string
+  incisionLevel?: string
+  anesthesiaType?: string
+  bloodLoss?: number
+  bloodTransfusion?: number
+  fluidInfusion?: number
+  surgeon?: string
+  surgeryDate?: string
+  uploadTime?: string
+}
+
+export interface NumericFieldStats {
+  fieldLabel: string
+  count?: number
+  avg?: number
+  median?: number
+  min?: number
+  max?: number
+  stdDev?: number
+  percentile25?: number
+  percentile75?: number
+  typicalRange?: string
+  unit?: string
+}
+
+export interface CategoryBucket {
+  value: string
+  count: number
+  percentage: number
+  isMostFrequent?: boolean
+}
+
+export type FieldType = 'NUMERIC' | 'CATEGORY'
+export type DeviationDirection = 'HIGHER' | 'LOWER' | 'WITHIN_RANGE' | 'DIFFERENT' | 'UNKNOWN'
+export type DeviationLevel = 'NORMAL' | 'MILD' | 'MODERATE' | 'SEVERE'
+
+export interface FieldComparison {
+  fieldType: FieldType
+  fieldLabel: string
+  currentValue?: string
+  typicalValue?: string
+  typicalRange?: string
+  deviationDirection?: DeviationDirection
+  deviationPercent?: number
+  deviationLevel?: DeviationLevel
+  unit?: string
+  tip?: string
+}
+
+export const DeviationLevelMap: Record<DeviationLevel, { label: string; color: string }> = {
+  NORMAL: { label: '正常', color: 'green' },
+  MILD: { label: '轻微偏差', color: 'blue' },
+  MODERATE: { label: '明显偏差', color: 'orange' },
+  SEVERE: { label: '严重偏差', color: 'red' },
+}
+
+export const DeviationDirectionMap: Record<DeviationDirection, { label: string; icon: string; color: string }> = {
+  HIGHER: { label: '偏高', icon: '↑', color: '#ff4d4f' },
+  LOWER: { label: '偏低', icon: '↓', color: '#faad14' },
+  WITHIN_RANGE: { label: '在区间内', icon: '✓', color: '#52c41a' },
+  DIFFERENT: { label: '非常规', icon: '!', color: '#faad14' },
+  UNKNOWN: { label: '未知', icon: '?', color: '#8c8c8c' },
+}
+
+export interface CaseStatsAnalysis {
+  totalCases: number
+  timeRangeDescription: string
+  numericStats: Record<string, NumericFieldStats>
+  categoryStats: Record<string, CategoryBucket[]>
+  fieldComparisons: Record<string, FieldComparison>
+}
+
+export interface CaseFullAnalysis {
+  similarCases: SimilarCaseResult[]
+  stats: CaseStatsAnalysis
+}

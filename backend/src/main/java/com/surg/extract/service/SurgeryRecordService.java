@@ -47,6 +47,7 @@ public class SurgeryRecordService {
     private final NlpServiceClient nlpServiceClient;
     private final ObjectMapper objectMapper;
     private final TermMappingService termMappingService;
+    private final SurgeryRecordEsIndexService esIndexService;
 
     @Transactional(rollbackFor = Exception.class)
     public RecordQueryDTO uploadRecord(MultipartFile file, RecordUploadDTO uploadDTO) {
@@ -546,6 +547,13 @@ public class SurgeryRecordService {
             surgeryRecordMapper.updateStatus(recordId, "NER_DONE", "处理完成");
 
             log.info("手术记录处理完成: recordId={}, 实体数={}", recordId, allEntities.size());
+
+            try {
+                esIndexService.asyncIndexRecord(recordId);
+                log.info("已提交异步索引任务: recordId={}", recordId);
+            } catch (Exception e) {
+                log.warn("提交ES索引任务失败（不影响主流程）: recordId={}", recordId, e);
+            }
         } catch (Exception e) {
             log.error("处理手术记录异常: recordId={}", recordId, e);
             surgeryRecordMapper.updateStatus(recordId, "FAILED", "处理异常: " + e.getMessage());

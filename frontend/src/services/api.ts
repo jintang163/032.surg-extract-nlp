@@ -492,3 +492,26 @@ export const hisSyncApi = {
   triggerBilling: (recordId: number) => http.post(`/his-sync/billing/${recordId}`),
   checkEnabled: () => http.get<{ enabled: boolean }>('/his-sync/enabled'),
 }
+
+export const caseCompareApi = {
+  searchSimilar: (params: any) =>
+    http.post<any[]>('/case-compare/similar/search', params),
+
+  getStatsAnalysis: (params: any) =>
+    http.post<any>('/case-compare/stats/analysis', params),
+
+  getFullAnalysis: (recordId: number, params: any) =>
+    http.post<any>(`/case-compare/${recordId}/full-analysis`, params),
+
+  rebuildIndex: () =>
+    http.post<any>('/case-compare/index/rebuild'),
+
+  syncRecord: (recordId: number) =>
+    http.post<void>(`/case-compare/index/sync/${recordId}`),
+
+  syncAll: () =>
+    http.post<any>('/case-compare/index/sync-all'),
+
+  getIndexStatus: () =>
+    http.get<any>('/case-compare/index/status'),
+}
