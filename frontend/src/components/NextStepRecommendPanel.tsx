@@ -97,7 +97,7 @@ const RecommendCard: React.FC<RecommendCardProps> = ({ item, index, generating, 
 
   return (
     <Badge.Ribbon
-      text={isTop ? '最佳推荐' : `#${index + 1}`}
+      text={isTop ? '后续首选' : `#${index + 1}`}
       color={color}
       style={{ fontSize: 11 }}
     >
@@ -222,13 +222,13 @@ const RecommendCard: React.FC<RecommendCardProps> = ({ item, index, generating, 
             marginBottom: 8,
           }}
         >
-          <Tooltip title="协同过滤得分：基于您和同科室医生的历史行为序列">
+          <Tooltip title="序列转移得分：基于医生历史行为序列，从已生成文书推演下一步">
             <span>
               <TeamOutlined style={{ color: '#1677ff', marginRight: 2 }} />
-              协同 {(item.collaborativeScore * 100).toFixed(0)}%
+              转移 {(item.collaborativeScore * 100).toFixed(0)}%
             </span>
           </Tooltip>
-          <Tooltip title="内容匹配得分：基于当前手术/诊断关键词">
+          <Tooltip title="内容匹配得分：基于当前手术名/诊断关键词">
             <span>
               <FileSearchOutlined style={{ color: '#52c41a', marginRight: 2 }} />
               内容 {(item.contentScore * 100).toFixed(0)}%
@@ -347,13 +347,13 @@ const NextStepRecommendPanel: React.FC<NextStepRecommendPanelProps> = ({
                 智能推荐下一步操作
               </div>
               <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 2 }}>
-                协同过滤（45%）+ 内容匹配（35%）+ 流行度（20%）
+                序列转移（45%）+ 内容匹配（35%）+ 流行度（20%）| 已排除已生成文书
               </div>
             </div>
           </Space>
         }
         extra={
-          <Tooltip title="刷新推荐">
+          <Tooltip title="刷新推荐（已生成文书将被排除）">
             <Button size="small" icon={<RobotOutlined />} onClick={loadRecommendations}>
               重新推荐
             </Button>
