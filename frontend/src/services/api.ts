@@ -1,6 +1,19 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import { message, Modal } from 'antd'
-import type { Result, HisSyncLog } from '@/types'
+import type {
+  Result,
+  HisSyncLog,
+  DoctorFeedback,
+  DoctorFeedbackCreateRequest,
+  FeedbackDashboardData,
+  FeedbackTrendItem,
+  EntityFeedbackStats,
+  DoctorFeedbackStats,
+  ModelTrainLog,
+  ModelTrainRequest,
+  TrainStatus,
+  PageResult,
+} from '@/types'
 
 const TOKEN_KEY = 'surg_extract_token'
 const baseURL = '/api'
@@ -644,4 +657,33 @@ export const batchTaskApi = {
   fillHomePages: (id: number) => http.post<string>(`/batch-tasks/${id}/fill-home`),
 
   delete: (id: number) => http.delete<void>(`/batch-tasks/${id}`),
+}
+
+export const feedbackApi = {
+  create: (data: DoctorFeedbackCreateRequest) =>
+    http.post<DoctorFeedback>('/feedback', data),
+
+  batchCreate: (data: DoctorFeedbackCreateRequest[]) =>
+    http.post<number>('/feedback/batch', data),
+
+  getDashboard: (params?: { days?: number; department?: string }) =>
+    http.get<FeedbackDashboardData>('/feedback/dashboard', { params }),
+
+  getTrend: (params: { days: number; department?: string; granularity?: 'DAY' | 'WEEK' | 'MONTH' }) =>
+    http.get<FeedbackTrendItem[]>('/feedback/trend', { params }),
+
+  getEntityTypeStats: (params?: { days?: number; department?: string }) =>
+    http.get<EntityFeedbackStats[]>('/feedback/stats/entity-type', { params }),
+
+  getTopDoctors: (params?: { topN?: number; days?: number }) =>
+    http.get<DoctorFeedbackStats[]>('/feedback/stats/top-doctors', { params }),
+
+  exportTrainingData: (params?: { format?: 'TSV' | 'JSON'; limit?: number }) =>
+    http.get<string>('/feedback/export/training-data', { params }),
+
+  triggerTraining: (data: ModelTrainRequest) =>
+    http.post<ModelTrainLog>('/feedback/train', data),
+
+  getTrainList: (params?: { pageNum?: number; pageSize?: number; trainStatus?: TrainStatus }) =>
+    http.get<PageResult<ModelTrainLog>>('/feedback/train/list', { params }),
 }

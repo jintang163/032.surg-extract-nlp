@@ -1166,3 +1166,174 @@ export interface BatchTaskCreateForm {
   notifyTarget?: string
   maxRetryCount?: number
 }
+
+export type CorrectionType = 'CORRECTION' | 'ADDITION' | 'DELETION'
+
+export const CorrectionTypeMap: Record<CorrectionType, { label: string; color: string }> = {
+  CORRECTION: { label: '修改', color: 'orange' },
+  ADDITION: { label: '新增', color: 'green' },
+  DELETION: { label: '删除', color: 'red' },
+}
+
+export type TrainStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED'
+
+export const TrainStatusMap: Record<TrainStatus, { label: string; color: string }> = {
+  PENDING: { label: '待开始', color: 'default' },
+  RUNNING: { label: '训练中', color: 'processing' },
+  SUCCESS: { label: '成功', color: 'success' },
+  FAILED: { label: '失败', color: 'error' },
+}
+
+export type TrainType = 'FULL' | 'INCREMENTAL' | 'WEEKLY'
+
+export const TrainTypeMap: Record<TrainType, { label: string; color: string }> = {
+  FULL: { label: '全量训练', color: 'blue' },
+  INCREMENTAL: { label: '增量微调', color: 'green' },
+  WEEKLY: { label: '周度训练', color: 'purple' },
+}
+
+export interface DoctorFeedback {
+  id: number
+  recordId: number
+  recordNo?: string
+  entityId?: number
+  entityType: EntityType
+  entityTypeLabel?: string
+  originalValue?: string
+  originalUnit?: string
+  originalConfidence?: number
+  originalSource?: string
+  originalSourceLabel?: string
+  correctedValue?: string
+  correctedUnit?: string
+  correctionType: CorrectionType
+  correctionTypeLabel?: string
+  department?: string
+  feedbackUserId?: number
+  feedbackUserName?: string
+  feedbackRemark?: string
+  qualityScore?: number
+  usedForTraining: number
+  trainBatchNo?: string
+  createdTime: string
+}
+
+export interface DoctorFeedbackCreateRequest {
+  recordId: number
+  entityId?: number
+  entityType: EntityType
+  originalValue?: string
+  originalUnit?: string
+  originalConfidence?: number
+  originalSource?: string
+  originalStartPos?: number
+  originalEndPos?: number
+  correctedValue?: string
+  correctedUnit?: string
+  correctionType: CorrectionType
+  feedbackRemark?: string
+  qualityScore?: number
+}
+
+export interface FeedbackOverview {
+  totalFeedbackCount: number
+  usedForTrainingCount: number
+  pendingTrainingCount: number
+  averageQualityScore: number
+  correctionCount: number
+  additionCount: number
+  deletionCount: number
+  totalTrainCount: number
+  latestF1Score: number
+  f1Improvement: number
+  activeDoctorCount: number
+}
+
+export interface FeedbackTrendItem {
+  date: string
+  department?: string
+  feedbackCount: number
+  correctionCount: number
+  additionCount: number
+  deletionCount: number
+  usedForTrainingCount: number
+  avgQualityScore: number
+  activeDoctorCount: number
+}
+
+export interface EntityFeedbackStats {
+  entityType: EntityType
+  entityTypeLabel: string
+  feedbackCount: number
+  correctionCount: number
+  additionCount: number
+  deletionCount: number
+  avgOriginalConfidence: number
+  usedForTrainingRate: number
+}
+
+export interface CorrectionTypeStats {
+  correctionType: CorrectionType
+  correctionTypeLabel: string
+  count: number
+  percentage: number
+}
+
+export interface DoctorFeedbackStats {
+  feedbackUserId: number
+  feedbackUserName: string
+  department?: string
+  feedbackCount: number
+  correctionCount: number
+  avgQualityScore: number
+  contributionScore: number
+}
+
+export interface ModelTrainLog {
+  id: number
+  trainBatchNo: string
+  modelName?: string
+  modelVersion?: string
+  previousVersion?: string
+  trainType: TrainType
+  feedbackCount: number
+  newSampleCount: number
+  totalSampleCount: number
+  trainLoss?: number
+  devLoss?: number
+  precisionScore?: number
+  recallScore?: number
+  f1Score?: number
+  previousF1Score?: number
+  f1Improvement?: number
+  entityTypeBreakdown?: string
+  trainStatus: TrainStatus
+  failReason?: string
+  trainStartTime?: string
+  trainEndTime?: string
+  trainDurationSec?: number
+  trainParams?: string
+  triggeredByName?: string
+  modelPath?: string
+  remark?: string
+  createdTime: string
+}
+
+export interface ModelTrainRequest {
+  trainType?: TrainType
+  maxFeedbackCount?: number
+  minQualityScore?: number
+  epochs?: number
+  batchSize?: number
+  learningRate?: number
+  remark?: string
+}
+
+export interface FeedbackDashboardData {
+  overview: FeedbackOverview
+  feedbackTrend: FeedbackTrendItem[]
+  entityTypeStats: EntityFeedbackStats[]
+  correctionTypeStats: CorrectionTypeStats[]
+  topDoctors: DoctorFeedbackStats[]
+  recentTrainLogs: ModelTrainLog[]
+}

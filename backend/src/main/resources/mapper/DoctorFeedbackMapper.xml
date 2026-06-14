@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.surg.extract.mapper.DoctorFeedbackMapper">
+
+    <select id="selectByRecordId" resultType="com.surg.extract.entity.DoctorFeedback">
+        SELECT * FROM doctor_feedback
+        WHERE record_id = #{recordId} AND deleted = 0
+        ORDER BY created_time DESC
+    </select>
+
+    <select id="selectPendingForTraining" resultType="com.surg.extract.entity.DoctorFeedback">
+        SELECT * FROM doctor_feedback
+        WHERE deleted = 0
+          AND used_for_training = 0
+          AND quality_score <![CDATA[>=]]> #{minQualityScore}
+        ORDER BY created_time ASC
+        LIMIT #{limit}
+    </select>
+
+    <update id="markAsUsed">
+        UPDATE doctor_feedback
+        SET used_for_training = 1,
+            used_time = NOW(),
+            train_batch_no = #{trainBatchNo},
+            updated_time = NOW()
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </update>
+
+    <select id="selectOverview" resultType="com.surg.extract.dto.FeedbackOverviewDTO">
+        SELECT
+            COUNT(*) AS totalFeedbackCount,
+            SUM(CASE WHEN used_for_training = 1 THEN 1 ELSE 0 END) AS usedForTrainingCount,
+            SUM(CASE WHEN used_for_training = 0 THEN 1 ELSE 0 END) AS pendingTrainingCount,
+            ROUND(AVG(CASE WHEN quality_score IS NOT NULL THEN quality_score ELSE 0 END), 2) AS averageQualityScore,
+            SUM(CASE WHEN correction_type = 'CORRECTION' THEN 1 ELSE 0 END) AS correctionCount,
+            SUM(CASE WHEN correction_type = 'ADDITION' THEN 1 ELSE 0 END) AS additionCount,
+            SUM(CASE WHEN correction_type = 'DELETION' THEN 1 ELSE 0 END) AS deletionCount,
+            COUNT(DISTINCT feedback_user_id) AS activeDoctorCount
+        FROM doctor_feedback
+        WHERE deleted = 0
+        <if test="startDate != null">
+            AND DATE(created_time) <![CDATA[>=]]> #{startDate}
+        </if>
+        <if test="endDate != null">
+            AND DATE(created_time) <![CDATA[<=]]> #{endDate}
+        </if>
+        <if test="department != null and department != ''">
+            AND department = #{department}
+        </if>
+    </select>
+
+    <select id="selectFeedbackTrend" resultType="com.surg.extract.dto.FeedbackTrendDTO">
+        SELECT
+            DATE(created_time) AS date,
+            department AS department,
+            COUNT(*) AS feedbackCount,
+            SUM(CASE WHEN correction_type = 'CORRECTION' THEN 1 ELSE 0 END) AS correctionCount,
+            SUM(CASE WHEN correction_type = 'ADDITION' THEN 1 ELSE 0 END) AS additionCount,
+            SUM(CASE WHEN correction_type = 'DELETION' THEN 1 ELSE 0 END) AS deletionCount,
+            SUM(CASE WHEN used_for_training = 1 THEN 1 ELSE 0 END) AS usedForTrainingCount,
+            ROUND(AVG(CASE WHEN quality_score IS NOT NULL THEN quality_score ELSE 0 END), 2) AS avgQualityScore,
+            COUNT(DISTINCT feedback_user_id) AS activeDoctorCount
+        FROM doctor_feedback
+        WHERE deleted = 0
+        <if test="startDate != null">
+            AND DATE(created_time) <![CDATA[>=]]> #{startDate}
+        </if>
+        <if test="endDate != null">
+            AND DATE(created_time) <![CDATA[<=]]> #{endDate}
+        </if>
+        <if test="department != null and department != ''">
+            AND department = #{department}
+        </if>
+        GROUP BY DATE(created_time)
+        <if test="groupBy == 'department'">
+            , department
+        </if>
+        ORDER BY date
+    </select>
+
+    <select id="selectEntityTypeStats" resultType="com.surg.extract.dto.EntityFeedbackStatsDTO">
+        SELECT
+            entity_type AS entityType,
+            COUNT(*) AS feedbackCount,
+            SUM(CASE WHEN correction_type = 'CORRECTION' THEN 1 ELSE 0 END) AS correctionCount,
+            SUM(CASE WHEN correction_type = 'ADDITION' THEN 1 ELSE 0 END) AS additionCount,
+            SUM(CASE WHEN correction_type = 'DELETION' THEN 1 ELSE 0 END) AS deletionCount,
+            ROUND(AVG(CASE WHEN original_confidence IS NOT NULL THEN original_confidence ELSE 0 END), 4) AS avgOriginalConfidence,
+            ROUND(
+                SUM(CASE WHEN used_for_training = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0), 2
+            ) AS usedForTrainingRate
+        FROM doctor_feedback
+        WHERE deleted = 0
+        <if test="startDate != null">
+            AND DATE(created_time) <![CDATA[>=]]> #{startDate}
+        </if>
+        <if test="endDate != null">
+            AND DATE(created_time) <![CDATA[<=]]> #{endDate}
+        </if>
+        <if test="department != null and department != ''">
+            AND department = #{department}
+        </if>
+        GROUP BY entity_type
+        ORDER BY feedbackCount DESC
+    </select>
+
+    <select id="selectCorrectionTypeStats" resultType="com.surg.extract.dto.CorrectionTypeStatsDTO">
+        SELECT
+            correction_type AS correctionType,
+            COUNT(*) AS count,
+            ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM doctor_feedback WHERE deleted = 0
+                <if test="startDate != null">
+                    AND DATE(created_time) <![CDATA[>=]]> #{startDate}
+                </if>
+                <if test="endDate != null">
+                    AND DATE(created_time) <![CDATA[<=]]> #{endDate}
+                </if>
+                <if test="department != null and department != ''">
+                    AND department = #{department}
+                </if>
+            ), 2) AS percentage
+        FROM doctor_feedback
+        WHERE deleted = 0
+          AND correction_type IS NOT NULL
+        <if test="startDate != null">
+            AND DATE(created_time) <![CDATA[>=]]> #{startDate}
+        </if>
+        <if test="endDate != null">
+            AND DATE(created_time) <![CDATA[<=]]> #{endDate}
+        </if>
+        <if test="department != null and department != ''">
+            AND department = #{department}
+        </if>
+        GROUP BY correction_type
+        ORDER BY count DESC
+    </select>
+
+    <select id="selectDoctorStats" resultType="com.surg.extract.dto.DoctorFeedbackStatsDTO">
+        SELECT
+            feedback_user_id AS feedbackUserId,
+            feedback_user_name AS feedbackUserName,
+            department AS department,
+            COUNT(*) AS feedbackCount,
+            SUM(CASE WHEN correction_type = 'CORRECTION' THEN 1 ELSE 0 END) AS correctionCount,
+            ROUND(AVG(CASE WHEN quality_score IS NOT NULL THEN quality_score ELSE 0 END), 2) AS avgQualityScore,
+            ROUND(
+                COUNT(*) * 1.0 + SUM(CASE WHEN quality_score IS NOT NULL THEN quality_score ELSE 0 END) * 0.5,
+                2
+            ) AS contributionScore
+        FROM doctor_feedback
+        WHERE deleted = 0
+          AND feedback_user_id IS NOT NULL
+        <if test="startDate != null">
+            AND DATE(created_time) <![CDATA[>=]]> #{startDate}
+        </if>
+        <if test="endDate != null">
+            AND DATE(created_time) <![CDATA[<=]]> #{endDate}
+        </if>
+        <if test="department != null and department != ''">
+            AND department = #{department}
+        </if>
+        GROUP BY feedback_user_id, feedback_user_name, department
+        ORDER BY contributionScore DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectDepartmentStats" resultType="java.util.Map">
+        SELECT
+            department AS department,
+            COUNT(*) AS feedbackCount,
+            SUM(CASE WHEN used_for_training = 1 THEN 1 ELSE 0 END) AS usedForTrainingCount,
+            ROUND(AVG(CASE WHEN quality_score IS NOT NULL THEN quality_score ELSE 0 END), 2) AS avgQualityScore
+        FROM doctor_feedback
+        WHERE deleted = 0
+          AND department IS NOT NULL
+        <if test="startDate != null">
+            AND DATE(created_time) <![CDATA[>=]]> #{startDate}
+        </if>
+        <if test="endDate != null">
+            AND DATE(created_time) <![CDATA[<=]]> #{endDate}
+        </if>
+        <if test="department != null and department != ''">
+            AND department = #{department}
+        </if>
+        GROUP BY department
+        ORDER BY feedbackCount DESC
+    </select>
+
+</mapper>

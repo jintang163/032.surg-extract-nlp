@@ -59,4 +59,10 @@ public interface NlpServiceClient {
 
     @GetMapping("/ner/custom/status/{field_id}")
     Map<String, Object> getCustomNerStatus(@PathVariable("field_id") Long fieldId);
+
+    @PostMapping("/ner/incremental-train")
+    Map<String, Object> triggerIncrementalTraining(
+            @RequestBody Map<String, Object> trainData,
+            @RequestParam Map<String, Object> params
+    );
 }

@@ -1,15 +1,24 @@
 package com.surg.extract.dto;
 
 import lombok.Data;
+import java.io.Serializable;
 
 @Data
-public class ModelTrainRequestDTO {
+public class ModelTrainRequestDTO implements Serializable {
 
-    private Long fieldId;
+    private static final long serialVersionUID = 1L;
 
-    private String department;
+    private String trainType;
 
-    private String fieldCode;
+    private Integer maxFeedbackCount;
 
-    private String trainMethod;
+    private Integer minQualityScore;
+
+    private Integer epochs;
+
+    private Integer batchSize;
+
+    private Double learningRate;
+
+    private String remark;
 }

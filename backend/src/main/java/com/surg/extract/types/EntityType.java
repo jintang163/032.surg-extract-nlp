@@ -47,4 +47,14 @@ public enum EntityType {
         }
         return map;
     }
+
+    public static String fromCode(String code) {
+        if (code == null) return null;
+        for (EntityType e : values()) {
+            if (e.name().equalsIgnoreCase(code)) {
+                return e.label;
+            }
+        }
+        return null;
+    }
 }

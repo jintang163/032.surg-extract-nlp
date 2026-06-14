@@ -16,6 +16,7 @@ import {
   FileProtectOutlined,
   BarChartOutlined,
   InboxOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
@@ -51,6 +52,12 @@ const MainLayout: React.FC = () => {
       icon: <BarChartOutlined />,
       label: '统计分析仪表盘',
       onClick: () => navigate('/analytics'),
+    },
+    {
+      key: '/feedback',
+      icon: <ThunderboltOutlined />,
+      label: '反馈与主动学习',
+      onClick: () => navigate('/feedback'),
     },
     {
       key: '/batch',
@@ -97,6 +104,7 @@ const MainLayout: React.FC = () => {
     if (path.startsWith('/medical-term')) return '/medical-term'
     if (path.startsWith('/quality-control')) return '/quality-control'
     if (path.startsWith('/analytics')) return '/analytics'
+    if (path.startsWith('/feedback')) return '/feedback'
     if (path.startsWith('/batch')) return '/batch'
     if (path.startsWith('/qc-report-templates')) return '/qc-report-templates'
     return path

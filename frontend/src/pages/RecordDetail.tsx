@@ -42,8 +42,16 @@ import {
   HistoryOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
-import { recordApi, templateApi } from '@/services/api'
-import type { SurgeryRecord, SurgeryEntity, EntityType, ProcessStatus, SurgeryTemplate } from '@/types'
+import { recordApi, templateApi, feedbackApi } from '@/services/api'
+import type {
+  SurgeryRecord,
+  SurgeryEntity,
+  EntityType,
+  ProcessStatus,
+  SurgeryTemplate,
+  CorrectionType,
+  DoctorFeedbackCreateRequest,
+} from '@/types'
 import { ProcessStatusMap, EntityTypeLabelMap, SourceMap } from '@/types'
 import dayjs from 'dayjs'
 import CaseComparePanel from '@/components/CaseComparePanel'
@@ -121,6 +129,13 @@ const RecordDetail: React.FC = () => {
   const handleEntityUpdate = async () => {
     try {
       const values = await entityForm.validateFields()
+      const originalEntity = currentEntity
+      let correctionType: CorrectionType = 'CORRECTION'
+
+      if (!originalEntity?.entityValue && values.entityValue) {
+        correctionType = 'ADDITION'
+      }
+
       const updated = entities.map((e) =>
         e.id === currentEntity?.id
           ? {
@@ -133,7 +148,28 @@ const RecordDetail: React.FC = () => {
       )
       await recordApi.updateEntities(recordId, updated.filter((e) => e.id === currentEntity?.id))
       setEntities(updated)
-      message.success('实体已更新')
+
+      try {
+        const feedbackReq: DoctorFeedbackCreateRequest = {
+          recordId: recordId,
+          entityId: originalEntity?.id,
+          entityType: originalEntity?.entityType || (values.entityType as EntityType),
+          originalValue: originalEntity?.entityValue,
+          originalUnit: originalEntity?.entityUnit,
+          originalConfidence: originalEntity?.confidence,
+          originalSource: originalEntity?.source,
+          originalStartPos: originalEntity?.startPos,
+          originalEndPos: originalEntity?.endPos,
+          correctedValue: values.entityValue,
+          correctedUnit: values.entityUnit,
+          correctionType: correctionType,
+        }
+        await feedbackApi.create(feedbackReq)
+      } catch (fe) {
+        console.warn('反馈记录提交失败，不影响实体保存', fe)
+      }
+
+      message.success('实体已更新，反馈已记录')
       setEntityDrawer(false)
     } catch (e: any) {
       if (e?.errorFields) return
