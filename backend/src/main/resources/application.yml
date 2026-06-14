@@ -52,6 +52,22 @@ spring:
       max-size: 20
       log-leaked-sessions: true
 
+  mail:
+    host: smtp.example.com
+    port: 465
+    username: noreply@example.com
+    password: your-mail-password
+    protocol: smtps
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+        transport:
+          protocol: smtps
+    default-encoding: UTF-8
+
   elasticsearch:
     uris: http://localhost:9200
     username:

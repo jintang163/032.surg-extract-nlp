@@ -22,13 +22,14 @@ public class NotificationService {
     @Value("${spring.mail.username:}")
     private String mailFrom;
 
-    @Value("${notification.wechat.template-id:}")
-    private String wechatTemplateId;
-
     @Async("notifyExecutor")
     public void sendEmailNotification(String to, String subject, String content) {
         if (!StringUtils.hasText(to) || !to.contains("@")) {
             log.warn("邮箱地址无效: {}", to);
+            return;
+        }
+        if (!StringUtils.hasText(mailFrom)) {
+            log.warn("发件人邮箱未配置，跳过邮件发送: to={}", to);
             return;
         }
         try {
@@ -41,18 +42,8 @@ public class NotificationService {
             mailSender.send(message);
             log.info("邮件通知发送成功: {}", to);
         } catch (Exception e) {
-            log.error("邮件通知发送失败: {}, error: {}", to, e.getMessage());
+            log.error("邮件通知发送失败: {}, error: {}", to, e.getMessage(), e);
         }
-    }
-
-    @Async("notifyExecutor")
-    public void sendWechatNotification(String openId, String templateId, String content) {
-        if (!StringUtils.hasText(openId)) {
-            log.warn("微信OpenID为空");
-            return;
-        }
-        log.info("微信通知已触发（需接入微信公众号/企业微信）: openId={}, templateId={}, content={}",
-                openId, templateId, content);
     }
 
     public void sendBatchCompleteNotification(String notifyType, String notifyTarget,
@@ -83,15 +74,10 @@ public class NotificationService {
                 .append("</td></tr>");
         content.append("</table>");
         content.append("<div style='margin-top: 20px; padding: 15px; background-color: #f6ffed; border: 1px solid #b7eb8f; border-radius: 4px;'>");
-        content.append("💡 请登录系统查看详细结果，失败文件可重试处理。");
+        content.append("请登录系统查看详细结果，失败文件可重试处理。");
         content.append("</div>");
         content.append("</div>");
 
-        if ("EMAIL".equalsIgnoreCase(notifyType) || "ALL".equalsIgnoreCase(notifyType)) {
-            sendEmailNotification(notifyTarget, subject, content.toString());
-        }
-        if ("WECHAT".equalsIgnoreCase(notifyType) || "ALL".equalsIgnoreCase(notifyType)) {
-            sendWechatNotification(notifyTarget, wechatTemplateId, subject);
-        }
+        sendEmailNotification(notifyTarget, subject, content.toString());
     }
 }

@@ -13,6 +13,8 @@ import com.surg.extract.mapper.BatchTaskItemMapper;
 import com.surg.extract.mapper.BatchTaskMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,7 +29,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -42,6 +43,9 @@ public class BatchTaskService {
     private final MedicalRecordHomeService homeService;
     private final FileStorageService fileStorageService;
     private final NotificationService notificationService;
+
+    @Autowired
+    private ApplicationContext applicationContext;
 
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
             "txt", "doc", "docx", "pdf", "png", "jpg", "jpeg", "gif", "bmp", "tiff", "tif"
@@ -79,7 +83,7 @@ public class BatchTaskService {
         task.setFailedCount(0);
         task.setPendingCount(extractedFiles.size());
         task.setStatus("PENDING");
-        task.setNotifyType(StringUtils.hasText(notifyType) ? notifyType : "EMAIL");
+        task.setNotifyType("EMAIL");
         task.setNotifyTarget(notifyTarget);
         task.setNotified(false);
         task.setRetryCount(0);
@@ -105,7 +109,8 @@ public class BatchTaskService {
 
         log.info("批量任务已创建: taskId={}, totalFiles={}", task.getId(), extractedFiles.size());
 
-        startBatchProcessing(task.getId());
+        BatchTaskService proxy = applicationContext.getBean(BatchTaskService.class);
+        proxy.startBatchProcessing(task.getId());
 
         return convertToDTO(task);
     }
@@ -143,27 +148,40 @@ public class BatchTaskService {
                     task = batchTaskMapper.selectById(taskId);
                 }
 
-                task.setStatus("COMPLETED");
+                int successCount = batchTaskMapper.countSuccessItems(taskId);
+                int failedCount = batchTaskMapper.countFailedItems(taskId);
+                int totalCount = task.getTotalCount() == null ? 0 : task.getTotalCount();
+
+                String finalStatus;
+                if (successCount > 0 && failedCount == 0) {
+                    finalStatus = "COMPLETED";
+                } else if (successCount > 0 && failedCount > 0) {
+                    finalStatus = "PARTIAL";
+                } else if (successCount == 0 && failedCount > 0) {
+                    finalStatus = "FAILED";
+                } else {
+                    finalStatus = "COMPLETED";
+                }
+
+                task.setStatus(finalStatus);
                 task.setEndTime(LocalDateTime.now());
                 batchTaskMapper.updateById(task);
 
-                if (!Boolean.TRUE.equals(task.getNotified())) {
+                if (!Boolean.TRUE.equals(task.getNotified()) && StringUtils.hasText(task.getNotifyTarget())) {
                     notificationService.sendBatchCompleteNotification(
                             task.getNotifyType(),
                             task.getNotifyTarget(),
                             task.getTaskName(),
-                            task.getTotalCount(),
-                            batchTaskMapper.countSuccessItems(taskId),
-                            batchTaskMapper.countFailedItems(taskId)
+                            totalCount,
+                            successCount,
+                            failedCount
                     );
                     task.setNotified(true);
                     batchTaskMapper.updateById(task);
                 }
 
-                log.info("批量任务完成: taskId={}, total={}, success={}, failed={}",
-                        taskId, task.getTotalCount(),
-                        batchTaskMapper.countSuccessItems(taskId),
-                        batchTaskMapper.countFailedItems(taskId));
+                log.info("批量任务完成: taskId={}, status={}, total={}, success={}, failed={}",
+                        taskId, finalStatus, totalCount, successCount, failedCount);
 
             } catch (Exception e) {
                 log.error("批量任务处理异常: taskId={}", taskId, e);
@@ -245,6 +263,9 @@ public class BatchTaskService {
         if (task == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "任务不存在");
         }
+        if ("PROCESSING".equals(task.getStatus())) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "任务正在处理中，请稍后再试");
+        }
 
         List<BatchTaskItem> failedItems = batchTaskItemMapper.selectFailedItems(taskId);
         if (failedItems.isEmpty()) {
@@ -260,9 +281,11 @@ public class BatchTaskService {
         task.setRetryCount((task.getRetryCount() == null ? 0 : task.getRetryCount()) + 1);
         task.setPendingCount(task.getPendingCount() + failedItems.size());
         task.setFailedCount(task.getFailedCount() - failedItems.size());
+        task.setNotified(false);
         batchTaskMapper.updateById(task);
 
-        startBatchProcessing(taskId);
+        BatchTaskService proxy = applicationContext.getBean(BatchTaskService.class);
+        proxy.startBatchProcessing(taskId);
 
         return getTaskDetail(taskId);
     }

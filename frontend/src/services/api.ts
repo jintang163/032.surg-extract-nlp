@@ -613,7 +613,6 @@ export const batchTaskApi = {
     params: {
       taskName?: string
       department?: string
-      notifyType?: string
       notifyTarget?: string
       maxRetryCount?: number
     },

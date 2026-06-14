@@ -3,11 +3,13 @@ package com.surg.extract.service;
 import com.surg.extract.common.BusinessException;
 import com.surg.extract.common.ErrorCode;
 import com.surg.extract.dto.HomePageUpdateDTO;
+import com.surg.extract.dto.NerEntityDTO;
 import com.surg.extract.entity.FieldMapping;
 import com.surg.extract.entity.MedicalRecordHome;
 import com.surg.extract.entity.SurgeryRecord;
 import com.surg.extract.mapper.FieldMappingMapper;
 import com.surg.extract.mapper.MedicalRecordHomeMapper;
+import com.surg.extract.mapper.SurgeryEntityMapper;
 import com.surg.extract.mapper.SurgeryRecordMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -21,6 +23,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -30,8 +33,10 @@ public class MedicalRecordHomeService {
     private final MedicalRecordHomeMapper homePageMapper;
     private final SurgeryRecordMapper recordMapper;
     private final FieldMappingMapper fieldMappingMapper;
+    private final SurgeryEntityMapper surgeryEntityMapper;
     private final ObjectMapper objectMapper;
     private final HisSyncService hisSyncService;
+    private final SurgeryRecordService surgeryRecordService;
 
     public Map<String, Object> getHomePage(Long recordId) {
         MedicalRecordHome home = homePageMapper.selectByRecordId(recordId);
@@ -236,6 +241,30 @@ public class MedicalRecordHomeService {
             case "anesthesiologist" -> dto.getAnesthesiologist();
             default -> null;
         };
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void autoFillHomePage(Long recordId) {
+        SurgeryRecord record = recordMapper.selectById(recordId);
+        if (record == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "手术记录不存在: " + recordId);
+        }
+
+        List<com.surg.extract.entity.SurgeryEntity> entityList = surgeryEntityMapper.selectByRecordId(recordId);
+        List<NerEntityDTO> nerEntities = entityList.stream()
+                .map(e -> {
+                    NerEntityDTO dto = new NerEntityDTO();
+                    dto.setEntityType(e.getEntityType());
+                    dto.setEntityValue(e.getEntityValue());
+                    dto.setConfidence(e.getConfidence() != null ? e.getConfidence().doubleValue() : null);
+                    dto.setStartPos(e.getStartPos());
+                    dto.setEndPos(e.getEndPos());
+                    dto.setOriginalText(e.getOriginalText());
+                    return dto;
+                })
+                .collect(Collectors.toList());
+
+        surgeryRecordService.autoFillHomePage(recordId, nerEntities);
     }
 
     public Map<String, Object> getEfficiencyStats() {

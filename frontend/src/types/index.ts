@@ -1093,13 +1093,14 @@ export interface AnalyticsDashboardData {
   lowConfidenceDistribution: LowConfidenceDistribution[]
 }
 
-export type BatchTaskStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
+export type BatchTaskStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'PARTIAL' | 'FAILED'
 
 export const BatchTaskStatusMap: Record<BatchTaskStatus, { label: string; color: string }> = {
   PENDING: { label: '等待中', color: 'default' },
   PROCESSING: { label: '处理中', color: 'processing' },
   COMPLETED: { label: '已完成', color: 'success' },
-  FAILED: { label: '失败', color: 'error' },
+  PARTIAL: { label: '部分完成', color: 'warning' },
+  FAILED: { label: '全部失败', color: 'error' },
 }
 
 export type BatchItemStatus = 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'FAILED'
@@ -1111,12 +1112,10 @@ export const BatchItemStatusMap: Record<BatchItemStatus, { label: string; color:
   FAILED: { label: '失败', color: 'error' },
 }
 
-export type NotifyType = 'EMAIL' | 'WECHAT' | 'ALL'
+export type NotifyType = 'EMAIL'
 
 export const NotifyTypeMap: Record<NotifyType, { label: string }> = {
   EMAIL: { label: '邮件通知' },
-  WECHAT: { label: '微信通知' },
-  ALL: { label: '全部通知' },
 }
 
 export interface BatchTask {

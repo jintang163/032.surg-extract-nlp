@@ -33,12 +33,11 @@ public class BatchTaskController {
             @RequestPart("file") MultipartFile file,
             @Parameter(description = "任务名称") @RequestParam(required = false) String taskName,
             @Parameter(description = "科室") @RequestParam(required = false) String department,
-            @Parameter(description = "通知类型：EMAIL/WECHAT/ALL") @RequestParam(defaultValue = "EMAIL") String notifyType,
-            @Parameter(description = "通知目标：邮箱或微信OpenID") @RequestParam(required = false) String notifyTarget,
+            @Parameter(description = "通知邮箱，任务完成后发送邮件通知") @RequestParam(required = false) String notifyTarget,
             @Parameter(description = "最大重试次数") @RequestParam(defaultValue = "3") Integer maxRetryCount) {
 
         BatchTaskDTO result = batchTaskService.createBatchTask(
-                file, taskName, department, notifyType, notifyTarget, maxRetryCount);
+                file, taskName, department, "EMAIL", notifyTarget, maxRetryCount);
         return Result.success("批量任务已创建，正在后台处理", result);
     }
 
@@ -47,7 +46,7 @@ public class BatchTaskController {
     public Result<PageResult<BatchTaskDTO>> getTaskList(
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") Integer pageNum,
             @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") Integer pageSize,
-            @Parameter(description = "任务状态：PENDING/PROCESSING/COMPLETED/FAILED") @RequestParam(required = false) String status,
+            @Parameter(description = "任务状态：PENDING-待处理 PROCESSING-处理中 COMPLETED-已完成 PARTIAL-部分完成 FAILED-全部失败") @RequestParam(required = false) String status,
             @Parameter(description = "科室") @RequestParam(required = false) String department,
             @Parameter(description = "开始日期") @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,
             @Parameter(description = "结束日期") @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate endDate) {
@@ -92,7 +91,7 @@ public class BatchTaskController {
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "删除任务", description = "删除批量任务（仅非处理中的任务不可删除")
+    @Operation(summary = "删除任务", description = "删除批量任务（处理中的任务不可删除）")
     public Result<Void> deleteTask(@PathVariable Long id) {
         batchTaskService.deleteTask(id);
         return Result.success("删除成功");

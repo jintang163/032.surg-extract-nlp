@@ -227,7 +227,6 @@ const BatchProcessing: React.FC = () => {
         {
           taskName: values.taskName,
           department: values.department,
-          notifyType: values.notifyType,
           notifyTarget: values.notifyTarget,
           maxRetryCount: values.maxRetryCount,
         },
@@ -373,11 +372,13 @@ const BatchProcessing: React.FC = () => {
                 ? 'exception'
                 : record.status === 'COMPLETED'
                   ? 'success'
-                  : 'active'
+                  : record.status === 'PARTIAL'
+                    ? 'normal'
+                    : 'active'
             }
             strokeColor={{
               '0%': '#1677ff',
-              '100%': '#52c41a',
+              '100%': record.status === 'PARTIAL' ? '#faad14' : '#52c41a',
             }}
           />
           <Text type="secondary" style={{ fontSize: 12 }}>
@@ -673,7 +674,8 @@ const BatchProcessing: React.FC = () => {
                 <Option value="PENDING">等待中</Option>
                 <Option value="PROCESSING">处理中</Option>
                 <Option value="COMPLETED">已完成</Option>
-                <Option value="FAILED">失败</Option>
+                <Option value="PARTIAL">部分完成</Option>
+                <Option value="FAILED">全部失败</Option>
               </Select>
               <Input
                 placeholder="科室"
@@ -772,27 +774,13 @@ const BatchProcessing: React.FC = () => {
           </Row>
 
           <Row gutter={16}>
-            <Col span={12}>
+            <Col span={24}>
               <Form.Item
-                label="通知方式"
-                name="notifyType"
-                initialValue="EMAIL"
-                rules={[{ required: true, message: '请选择通知方式' }]}
-              >
-                <Select>
-                  <Option value="EMAIL">邮件通知</Option>
-                  <Option value="WECHAT">微信通知</Option>
-                  <Option value="ALL">邮件+微信</Option>
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                label="通知目标"
+                label="通知邮箱"
                 name="notifyTarget"
-                rules={[{ required: true, message: '请输入通知目标' }]}
+                rules={[{ required: true, message: '请输入通知邮箱' }, { type: 'email', message: '请输入有效的邮箱地址' }]}
               >
-                <Input placeholder="邮箱地址或微信OpenID" />
+                <Input placeholder="任务完成后将通知到此邮箱" />
               </Form.Item>
             </Col>
           </Row>
@@ -942,8 +930,14 @@ const BatchProcessing: React.FC = () => {
                     ? 'exception'
                     : selectedTask.status === 'COMPLETED'
                       ? 'success'
-                      : 'active'
+                      : selectedTask.status === 'PARTIAL'
+                        ? 'normal'
+                        : 'active'
                 }
+                strokeColor={{
+                  '0%': '#1677ff',
+                  '100%': selectedTask.status === 'PARTIAL' ? '#faad14' : '#52c41a',
+                }}
               />
             </Card>
 
