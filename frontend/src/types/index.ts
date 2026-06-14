@@ -1092,3 +1092,78 @@ export interface AnalyticsDashboardData {
   surgeryWordCloud: SurgeryWordCloudItem[]
   lowConfidenceDistribution: LowConfidenceDistribution[]
 }
+
+export type BatchTaskStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
+
+export const BatchTaskStatusMap: Record<BatchTaskStatus, { label: string; color: string }> = {
+  PENDING: { label: '等待中', color: 'default' },
+  PROCESSING: { label: '处理中', color: 'processing' },
+  COMPLETED: { label: '已完成', color: 'success' },
+  FAILED: { label: '失败', color: 'error' },
+}
+
+export type BatchItemStatus = 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'FAILED'
+
+export const BatchItemStatusMap: Record<BatchItemStatus, { label: string; color: string }> = {
+  PENDING: { label: '待处理', color: 'default' },
+  PROCESSING: { label: '处理中', color: 'processing' },
+  SUCCESS: { label: '成功', color: 'success' },
+  FAILED: { label: '失败', color: 'error' },
+}
+
+export type NotifyType = 'EMAIL' | 'WECHAT' | 'ALL'
+
+export const NotifyTypeMap: Record<NotifyType, { label: string }> = {
+  EMAIL: { label: '邮件通知' },
+  WECHAT: { label: '微信通知' },
+  ALL: { label: '全部通知' },
+}
+
+export interface BatchTask {
+  id: number
+  taskName: string
+  department?: string
+  taskType: string
+  originalFileName?: string
+  fileSize?: number
+  totalCount: number
+  successCount: number
+  failedCount: number
+  pendingCount: number
+  status: BatchTaskStatus
+  errorMessage?: string
+  progress: number
+  notifyType: NotifyType
+  notifyTarget?: string
+  retryCount: number
+  startTime?: string
+  endTime?: string
+  createdByName?: string
+  createdTime: string
+}
+
+export interface BatchTaskItem {
+  id: number
+  taskId: number
+  fileName: string
+  filePath?: string
+  fileType: FileType
+  patientName?: string
+  hospitalNo?: string
+  recordId?: number
+  status: BatchItemStatus
+  errorMessage?: string
+  retryCount: number
+  startTime?: string
+  endTime?: string
+  createdTime: string
+}
+
+export interface BatchTaskCreateForm {
+  file: File
+  taskName?: string
+  department?: string
+  notifyType: NotifyType
+  notifyTarget?: string
+  maxRetryCount?: number
+}

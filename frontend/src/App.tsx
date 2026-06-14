@@ -4,6 +4,7 @@ import MainLayout from '@/layouts/MainLayout'
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 import AnalyticsDashboard from '@/pages/AnalyticsDashboard'
+import BatchProcessing from '@/pages/BatchProcessing'
 import RecordList from '@/pages/RecordList'
 import RecordDetail from '@/pages/RecordDetail'
 import HomePageFill from '@/pages/HomePageFill'
@@ -31,6 +32,7 @@ const App: React.FC = () => {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="analytics" element={<AnalyticsDashboard />} />
+        <Route path="batch" element={<BatchProcessing />} />
         <Route path="records" element={<RecordList />} />
         <Route path="records/:id" element={<RecordDetail />} />
         <Route path="homepage/:recordId" element={<HomePageFill />} />

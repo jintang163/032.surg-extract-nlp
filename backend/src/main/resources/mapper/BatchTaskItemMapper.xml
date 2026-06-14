@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.surg.extract.mapper.BatchTaskItemMapper">
+
+    <resultMap id="ItemDTOResultMap" type="com.surg.extract.dto.BatchTaskItemDTO">
+        <id column="id" property="id"/>
+        <result column="task_id" property="taskId"/>
+        <result column="record_id" property="recordId"/>
+        <result column="file_name" property="fileName"/>
+        <result column="patient_name" property="patientName"/>
+        <result column="hospital_no" property="hospitalNo"/>
+        <result column="file_type" property="fileType"/>
+        <result column="status" property="status"/>
+        <result column="error_message" property="errorMessage"/>
+        <result column="retry_count" property="retryCount"/>
+        <result column="start_time" property="startTime"/>
+        <result column="end_time" property="endTime"/>
+        <result column="created_time" property="createdTime"/>
+    </resultMap>
+
+    <select id="selectItemPage" resultMap="ItemDTOResultMap">
+        SELECT
+            i.id,
+            i.task_id,
+            i.record_id,
+            i.file_name,
+            i.patient_name,
+            i.hospital_no,
+            i.file_type,
+            i.status,
+            i.error_message,
+            i.retry_count,
+            i.start_time,
+            i.end_time,
+            i.created_time
+        FROM batch_task_item i
+        WHERE i.deleted = 0 AND i.task_id = #{taskId}
+        <if test="status != null and status != ''">
+            AND i.status = #{status}
+        </if>
+        ORDER BY i.created_time DESC
+    </select>
+
+    <select id="selectPendingItems" resultType="com.surg.extract.entity.BatchTaskItem">
+        SELECT * FROM batch_task_item
+        WHERE task_id = #{taskId} AND deleted = 0 AND status = 'PENDING'
+        ORDER BY created_time ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectFailedItems" resultType="com.surg.extract.entity.BatchTaskItem">
+        SELECT * FROM batch_task_item
+        WHERE task_id = #{taskId} AND deleted = 0 AND status = 'FAILED'
+        ORDER BY created_time DESC
+    </select>
+
+    <select id="selectSuccessRecordIds" resultType="java.lang.Long">
+        SELECT record_id FROM batch_task_item
+        WHERE task_id = #{taskId} AND deleted = 0 AND status = 'SUCCESS' AND record_id IS NOT NULL
+        ORDER BY created_time DESC
+    </select>
+
+</mapper>

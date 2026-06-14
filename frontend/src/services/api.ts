@@ -606,3 +606,43 @@ export const analyticsApi = {
       responseType: 'blob',
     }),
 }
+
+export const batchTaskApi = {
+  create: (
+    file: File,
+    params: {
+      taskName?: string
+      department?: string
+      notifyType?: string
+      notifyTarget?: string
+      maxRetryCount?: number
+    },
+    onProgress?: (p: number) => void
+  ) => http.upload<any>('/batch-tasks/upload', file, params, onProgress),
+
+  list: (params: {
+    status?: string
+    department?: string
+    startDate?: string
+    endDate?: string
+    pageNum: number
+    pageSize: number
+  }) => http.get<any>('/batch-tasks/list', { params }),
+
+  detail: (id: number) => http.get<any>(`/batch-tasks/${id}`),
+
+  getItems: (
+    id: number,
+    params: {
+      status?: string
+      pageNum: number
+      pageSize: number
+    }
+  ) => http.get<any>(`/batch-tasks/${id}/items`, { params }),
+
+  retry: (id: number) => http.post<any>(`/batch-tasks/${id}/retry`),
+
+  fillHomePages: (id: number) => http.post<string>(`/batch-tasks/${id}/fill-home`),
+
+  delete: (id: number) => http.delete<void>(`/batch-tasks/${id}`),
+}
