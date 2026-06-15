@@ -114,10 +114,14 @@ class BertBiLSTMCRF(nn.Module):
         num_labels: int,
         hidden_dim: int = 256,
         lstm_layers: int = 2,
-        lstm_dropout: float = 0.3
+        lstm_dropout: float = 0.3,
+        offline_mode: bool = False,
     ):
         super().__init__()
-        self.bert = AutoModel.from_pretrained(bert_model_name)
+        if offline_mode:
+            self.bert = AutoModel.from_pretrained(bert_model_name, local_files_only=True)
+        else:
+            self.bert = AutoModel.from_pretrained(bert_model_name)
         bert_dim = self.bert.config.hidden_size
         self.dropout = nn.Dropout(lstm_dropout)
         self.bilstm = nn.LSTM(
@@ -204,22 +208,40 @@ class SurgeryNerInference:
 
         tokenizer_dir = self.model_dir / "tokenizer"
         if tokenizer_dir.exists():
-            self.tokenizer = AutoTokenizer.from_pretrained(str(tokenizer_dir))
+            self.tokenizer = AutoTokenizer.from_pretrained(str(tokenizer_dir), local_files_only=True)
         else:
             if bert_model_name is None:
                 bert_model_name = "bert-base-chinese"
-            self.tokenizer = AutoTokenizer.from_pretrained(bert_model_name)
+            try:
+                from app.config import get_settings
+                settings = get_settings()
+                if settings.offline_mode and os.path.exists(settings.bert_local_path):
+                    self.tokenizer = AutoTokenizer.from_pretrained(settings.bert_local_path, local_files_only=True)
+                else:
+                    self.tokenizer = AutoTokenizer.from_pretrained(bert_model_name)
+            except Exception:
+                self.tokenizer = AutoTokenizer.from_pretrained(bert_model_name)
 
         if bert_model_name is None:
             bert_model_name = "bert-base-chinese"
 
         arch = self.config.get("architecture", {})
+        bert_local_path = None
+        try:
+            from app.config import get_settings
+            settings = get_settings()
+            if settings.offline_mode and os.path.exists(settings.bert_local_path):
+                bert_local_path = settings.bert_local_path
+        except Exception:
+            pass
+
         self.model = BertBiLSTMCRF(
-            bert_model_name=bert_model_name,
+            bert_model_name=bert_local_path or bert_model_name,
             num_labels=self.num_labels,
             hidden_dim=arch.get("bilstm_hidden_dim", 256),
             lstm_layers=arch.get("bilstm_layers", 2),
             lstm_dropout=arch.get("bilstm_dropout", 0.3),
+            offline_mode=bert_local_path is not None,
         ).to(self.device)
 
         model_path = self.model_dir / "pytorch_model.bin"

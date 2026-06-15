@@ -527,10 +527,14 @@ class BertBiLSTMCRF(nn.Module):
         num_labels: int,
         hidden_dim: int = 256,
         lstm_layers: int = 2,
-        lstm_dropout: float = 0.3
+        lstm_dropout: float = 0.3,
+        offline_mode: bool = False,
     ):
         super().__init__()
-        self.bert = AutoModel.from_pretrained(bert_model_name)
+        if offline_mode:
+            self.bert = AutoModel.from_pretrained(bert_model_name, local_files_only=True)
+        else:
+            self.bert = AutoModel.from_pretrained(bert_model_name)
         bert_dim = self.bert.config.hidden_size
 
         self.dropout = nn.Dropout(lstm_dropout)
@@ -714,7 +718,8 @@ def train_incremental(args):
         db_loader.close()
         return
 
-    tokenizer = AutoTokenizer.from_pretrained(args.bert_model)
+    bert_path = args.bert_local_path if (args.offline_mode and args.bert_local_path) else args.bert_model
+    tokenizer = AutoTokenizer.from_pretrained(bert_path, local_files_only=args.offline_mode)
     try:
         tokenizer.save_pretrained(output_dir / "tokenizer")
     except Exception:
@@ -729,11 +734,12 @@ def train_incremental(args):
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size)
 
     model = BertBiLSTMCRF(
-        bert_model_name=args.bert_model,
+        bert_model_name=bert_path,
         num_labels=num_labels,
         hidden_dim=args.hidden_dim,
         lstm_layers=args.lstm_layers,
-        lstm_dropout=args.lstm_dropout
+        lstm_dropout=args.lstm_dropout,
+        offline_mode=args.offline_mode,
     )
 
     model_dir = Path(args.model_dir)
@@ -969,6 +975,8 @@ def main():
     parser.add_argument("--no_cuda", action="store_true")
     parser.add_argument("--export_only", action="store_true", help="仅导出训练数据")
     parser.add_argument("--output_data", type=str, default=None, help="导出数据路径")
+    parser.add_argument("--offline_mode", action="store_true", help="离线模式，从本地加载模型")
+    parser.add_argument("--bert_local_path", type=str, default=None, help="本地BERT模型路径")
 
     args = parser.parse_args()
     train_incremental(args)

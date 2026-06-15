@@ -1,0 +1,42 @@
+# syntax=docker/dockerfile:1.6
+
+FROM maven:3.9.6-eclipse-temurin-17 AS builder
+WORKDIR /app
+
+ENV MAVEN_OPTS="-Xmx2g -XX:MaxPermSize=512m" \
+    MAVEN_CONFIG="/root/.m2"
+
+COPY pom.xml .
+COPY .mvn /root/.m2
+
+RUN mvn dependency:go-offline -B
+
+COPY src ./src
+
+RUN mvn clean package -DskipTests -B -q
+
+FROM eclipse-temurin:17-jre-jammy
+WORKDIR /app
+
+ENV TZ=Asia/Shanghai \
+    JAVA_OPTS="-Xms1g -Xmx2g" \
+    SPRING_PROFILES_ACTIVE=offline \
+    OFFLINE_MODE=true
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tzdata \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime \
+    && echo ${TZ} > /etc/timezone
+
+COPY --from=builder /app/target/*.jar app.jar
+
+RUN mkdir -p /app/data/uploads /app/data/logs /app/data/export
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+    CMD curl -f http://localhost:8080/api/actuator/health || exit 1
+
+ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -Djava.security.egd=file:/dev/./urandom -jar app.jar"]
