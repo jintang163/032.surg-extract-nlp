@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.surg.extract.mapper.Icd10PcsConfirmationMapper">
+
+    <resultMap id="BaseResultMap" type="com.surg.extract.entity.Icd10PcsConfirmation">
+        <id column="id" property="id"/>
+        <result column="record_id" property="recordId"/>
+        <result column="pcs_code" property="pcsCode"/>
+        <result column="section_code" property="sectionCode"/>
+        <result column="body_system_code" property="bodySystemCode"/>
+        <result column="root_operation_code" property="rootOperationCode"/>
+        <result column="body_part_code" property="bodyPartCode"/>
+        <result column="approach_code" property="approachCode"/>
+        <result column="device_code" property="deviceCode"/>
+        <result column="qualifier_code" property="qualifierCode"/>
+        <result column="description" property="description"/>
+        <result column="recommended_confidence" property="recommendedConfidence"/>
+        <result column="recommended_code" property="recommendedCode"/>
+        <result column="is_matched" property="isMatched"/>
+        <result column="source" property="source"/>
+        <result column="additional_data" property="additionalData"/>
+        <result column="confirm_user_id" property="confirmUserId"/>
+        <result column="confirm_user_name" property="confirmUserName"/>
+        <result column="confirm_time" property="confirmTime"/>
+        <result column="created_time" property="createdTime"/>
+        <result column="updated_time" property="updatedTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <select id="selectByRecordId" resultMap="BaseResultMap">
+        SELECT * FROM icd10_pcs_confirmation
+        WHERE deleted = 0 AND record_id = #{recordId}
+        ORDER BY confirm_time DESC, id DESC
+    </select>
+
+    <select id="selectLatestByRecordId" resultMap="BaseResultMap">
+        SELECT * FROM icd10_pcs_confirmation
+        WHERE deleted = 0 AND record_id = #{recordId}
+        ORDER BY confirm_time DESC, id DESC
+        LIMIT 1
+    </select>
+</mapper>

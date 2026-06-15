@@ -3,6 +3,7 @@ package com.surg.extract.controller;
 import com.surg.extract.common.Result;
 import com.surg.extract.dto.HomePageUpdateDTO;
 import com.surg.extract.entity.FieldMapping;
+import com.surg.extract.service.Icd10PcsCodingService;
 import com.surg.extract.service.MedicalRecordHomeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -19,11 +20,18 @@ import java.util.Map;
 public class MedicalRecordHomeController {
 
     private final MedicalRecordHomeService homeService;
+    private final Icd10PcsCodingService icd10PcsCodingService;
 
     @GetMapping("/{recordId}")
     @Operation(summary = "获取病案首页", description = "根据手术记录ID获取病案首页数据")
     public Result<Map<String, Object>> getHomePage(@PathVariable Long recordId) {
         return Result.success(homeService.getHomePage(recordId));
+    }
+
+    @GetMapping("/{recordId}/with-codes")
+    @Operation(summary = "获取病案首页(含推荐编码)", description = "返回病案首页数据 + ICD-10-PCS推荐编码 + 医生已确认编码")
+    public Result<Map<String, Object>> getHomePageWithCodes(@PathVariable Long recordId) {
+        return Result.success(icd10PcsCodingService.getHomePageWithCodes(recordId));
     }
 
     @GetMapping("/field-mappings")

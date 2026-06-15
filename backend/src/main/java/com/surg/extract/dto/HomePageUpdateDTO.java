@@ -29,6 +29,8 @@ public class HomePageUpdateDTO {
 
     private String surgeryName;
 
+    private String surgeryCode;
+
     private String surgeryLevel;
 
     private String incisionLevel;

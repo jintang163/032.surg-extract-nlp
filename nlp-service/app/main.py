@@ -1279,13 +1279,21 @@ async def api_icd10pcs_recommend(
 async def api_icd10pcs_confirm(
     request: Icd10PcsConfirmRequest,
 ):
-    logger.info(f"ICD-10-PCS编码确认请求: record_id={request.record_id}, pcs_code={request.pcs_code}")
+    logger.info(f"ICD-10-PCS编码确认请求: record_id={request.record_id}, pcs_code={request.pcs_code}, source={request.source}")
     try:
         service = get_icd10pcs_service()
+        additional = request.additional_data or {}
+        if request.recommended_code:
+            additional.setdefault("recommended_code", request.recommended_code)
+        if request.recommendation_confidence:
+            additional.setdefault("recommendation_confidence", request.recommendation_confidence)
         result = service.confirm_code(
             record_id=request.record_id,
             pcs_code=request.pcs_code.upper(),
             user_id=request.user_id,
+            user_name=request.user_name,
+            source=request.source or "manual_confirm",
+            additional_data=additional,
         )
         return Icd10PcsConfirmResponse(**result)
     except Exception as e:
@@ -1295,6 +1303,64 @@ async def api_icd10pcs_confirm(
             confirmation=None,
             error_message=f"编码确认异常: {str(e)}",
         )
+
+
+@app.get("/api/v1/icd10-pcs/homepage/{record_id}",
+         tags=["ICD-10-PCS手术编码"],
+         summary="首页含推荐编码和已确认编码")
+async def api_icd10pcs_homepage(record_id: int):
+    logger.info(f"ICD-10-PCS首页聚合查询: record_id={record_id}")
+    start = time.time()
+    try:
+        from app.services.icd10pcs_coding import Icd10PcsCodingService
+        service: Icd10PcsCodingService = get_icd10pcs_service()
+
+        latest_confirmation = service.get_latest_confirmation(record_id)
+
+        cached = service._recommend_cache.get(str(record_id))
+        recommendations = []
+        top_code = None
+        if cached:
+            recommendations = cached
+            top_code = cached[0] if cached else None
+        else:
+            ner_service = get_ner_service()
+            extract_res = ner_service.extract_entities(
+                text="", record_id=record_id
+            )
+            entities = extract_res.get("entities", []) if extract_res.get("success") else []
+            rec_res = service.recommend_codes(
+                entities=entities, record_id=record_id, top_k=5
+            )
+            recommendations = rec_res.get("recommendations", [])
+            top_code = rec_res.get("top_code")
+
+        result = {
+            "success": True,
+            "record_id": record_id,
+            "pcs_recommendations": recommendations,
+            "pcs_top_recommendation": top_code,
+            "pcs_confirmed_code": latest_confirmation,
+            "pcs_suggested_code": (
+                latest_confirmation.get("pcs_code") if latest_confirmation
+                else (top_code.get("pcs_code") if top_code else None)
+            ),
+            "pcs_suggested_confidence": (
+                None if latest_confirmation
+                else (top_code.get("confidence") if top_code else None)
+            ),
+            "processing_time_ms": int((time.time() - start) * 1000),
+            "error_message": None,
+        }
+        return result
+    except Exception as e:
+        logger.error(f"ICD-10-PCS首页聚合查询异常: {e}", exc_info=True)
+        return {
+            "success": False,
+            "record_id": record_id,
+            "error_message": str(e),
+            "processing_time_ms": int((time.time() - start) * 1000),
+        }
 
 
 @app.get("/api/v1/icd10-pcs/history",

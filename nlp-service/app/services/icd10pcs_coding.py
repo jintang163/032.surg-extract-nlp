@@ -1,9 +1,56 @@
 import re
 import json
 import os
-from dataclasses import dataclass, field
+import time
+from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Any, Optional, Tuple
 from loguru import logger
+from app.config import get_settings
+
+
+ENTITY_TYPE_SURGERY_NAME = "SURGERY_NAME"
+ENTITY_TYPE_BODY_PART = "BODY_PART"
+ENTITY_TYPE_SURGERY_BODY_PART = "SURGERY_BODY_PART"
+ENTITY_TYPE_ANATOMY = "ANATOMY"
+ENTITY_TYPE_ANATOMICAL_SITE = "ANATOMICAL_SITE"
+ENTITY_TYPE_APPROACH = "APPROACH"
+ENTITY_TYPE_SURGERY_APPROACH = "SURGERY_APPROACH"
+ENTITY_TYPE_SURGICAL_APPROACH = "SURGICAL_APPROACH"
+ENTITY_TYPE_INSTRUMENT = "INSTRUMENT"
+ENTITY_TYPE_SURGERY_INSTRUMENT = "SURGERY_INSTRUMENT"
+ENTITY_TYPE_DEVICE = "DEVICE"
+ENTITY_TYPE_IMPLANT = "IMPLANT"
+ENTITY_TYPE_SURGERY_LEVEL = "SURGERY_LEVEL"
+ENTITY_TYPE_SURGERY_SCOPE = "SURGERY_SCOPE"
+ENTITY_TYPE_LATERALITY = "LATERALITY"
+ENTITY_TYPE_SURGERY_CODE = "SURGERY_CODE"
+ENTITY_TYPE_ICD_CODE = "ICD_CODE"
+
+SUPPORTED_ENTITY_TYPES = {
+    ENTITY_TYPE_SURGERY_NAME,
+    ENTITY_TYPE_BODY_PART, ENTITY_TYPE_SURGERY_BODY_PART,
+    ENTITY_TYPE_ANATOMY, ENTITY_TYPE_ANATOMICAL_SITE,
+    ENTITY_TYPE_APPROACH, ENTITY_TYPE_SURGERY_APPROACH, ENTITY_TYPE_SURGICAL_APPROACH,
+    ENTITY_TYPE_INSTRUMENT, ENTITY_TYPE_SURGERY_INSTRUMENT,
+    ENTITY_TYPE_DEVICE, ENTITY_TYPE_IMPLANT,
+    ENTITY_TYPE_SURGERY_LEVEL, ENTITY_TYPE_SURGERY_SCOPE, ENTITY_TYPE_LATERALITY,
+    ENTITY_TYPE_SURGERY_CODE, ENTITY_TYPE_ICD_CODE,
+}
+
+BODY_PART_ENTITY_TYPES = {
+    ENTITY_TYPE_BODY_PART, ENTITY_TYPE_SURGERY_BODY_PART,
+    ENTITY_TYPE_ANATOMY, ENTITY_TYPE_ANATOMICAL_SITE,
+}
+APPROACH_ENTITY_TYPES = {
+    ENTITY_TYPE_APPROACH, ENTITY_TYPE_SURGERY_APPROACH, ENTITY_TYPE_SURGICAL_APPROACH,
+}
+DEVICE_ENTITY_TYPES = {
+    ENTITY_TYPE_INSTRUMENT, ENTITY_TYPE_SURGERY_INSTRUMENT,
+    ENTITY_TYPE_DEVICE, ENTITY_TYPE_IMPLANT,
+}
+QUALIFIER_ENTITY_TYPES = {
+    ENTITY_TYPE_SURGERY_LEVEL, ENTITY_TYPE_SURGERY_SCOPE, ENTITY_TYPE_LATERALITY,
+}
 
 
 @dataclass
@@ -708,7 +755,7 @@ class Icd10PcsDecisionTree:
                     rule_name=f"手术部位识别:{part_key}"
                 )
 
-                approach_map = self._build_approach_children(part_key)
+                approach_map = self._build_approach_children(part_key, op_key)
                 part_node.children.extend(approach_map)
 
                 op_node.children.append(part_node)
@@ -717,7 +764,7 @@ class Icd10PcsDecisionTree:
 
         return [root]
 
-    def _build_approach_children(self, body_part_key: str) -> List[DecisionTreeNode]:
+    def _build_approach_children(self, body_part_key: str, op_key: str) -> List[DecisionTreeNode]:
         children = []
         approach_rules = [
             ("经皮内镜", ["经皮内镜", "经皮腔镜", "经皮肾镜", "经皮椎体成形"], "percutaneous_endoscopic"),
@@ -733,24 +780,109 @@ class Icd10PcsDecisionTree:
             ("开放", ["开放", "切开", "开腹", "开胸", "开颅", "根治", "根治性", "ORIF"], "open"),
         ]
         for rule_name, keywords, approach_key in approach_rules:
+            approach_code = self.kb.APPROACH_MAP.get(approach_key, "Z")
             child = DecisionTreeNode(
-                node_id=f"approach_{body_part_key}_{approach_key}",
+                node_id=f"approach_{body_part_key}_{op_key}_{approach_key}",
                 field="approach",
                 operator="contains_any",
                 value=keywords,
-                pcs_component={"approach": self.kb.APPROACH_MAP.get(approach_key, "Z")},
+                pcs_component={"approach": approach_code},
                 rule_name=f"入路识别:{rule_name}"
             )
+            device_children = self._build_device_children(body_part_key, op_key, approach_key)
+            child.children.extend(device_children)
             children.append(child)
+
+        fallback_device = self._build_device_children(body_part_key, op_key, "default")
+        children.extend(fallback_device)
+        return children
+
+    def _build_device_children(self, body_part_key: str, op_key: str, approach_key: str) -> List[DecisionTreeNode]:
+        children = []
+        device_rules = [
+            ("支架/支架置入", ["支架", "支架置入", "支架植入", "金属支架", "覆膜支架", "stent"], "stent"),
+            ("假体/人工关节", ["假体", "人工关节", "股骨头假体", "全髋关节", "全膝关节", "人工瓣膜", "起搏器", "pacemaker"], "prosthesis"),
+            ("补片/疝修补", ["补片", "疝补片", "mesh"], "mesh"),
+            ("钢板/钉板", ["钢板", "钉板", "钢板螺钉", "内固定钢板", "LCP", "DHS"], "钉板"),
+            ("螺钉/椎弓根钉", ["螺钉", "椎弓根钉", "皮质骨螺钉", "screw"], "screw"),
+            ("髓内钉/交锁钉", ["髓内钉", "交锁钉", "PFNA", "Gamma钉", "intramedullary"], "髓内钉"),
+            ("自体植骨", ["自体骨", "自体植骨", "髂骨植骨"], "graft_autologous"),
+            ("异体植骨", ["异体骨", "异体植骨", "同种异体骨"], "graft_allogeneic"),
+            ("人工骨/骨替代材料", ["人工骨", "骨替代", "硫酸钙", "磷酸钙"], "synthetic_graft"),
+            ("钛夹/止血夹", ["钛夹", "夹", "止血夹", "Hem-o-lok", "clip"], "clip"),
+            ("引流管/引流装置", ["引流管", "引流条", "负压引流", "闭式引流"], "引流管"),
+            ("导管/鞘管", ["导管", "鞘管", "造影导管", "指引导管"], "导管"),
+            ("骨水泥", ["骨水泥", "PMMA", "bone_cement"], "bone_cement"),
+            ("球囊/扩张球囊", ["球囊", "扩张球囊", "PTA球囊"], "balloon"),
+            ("放射性粒子", ["放射性粒子", "碘125粒子", "brachytherapy"], "radioactive_brachytherapy"),
+            ("栓塞材料/弹簧圈", ["弹簧圈", "栓塞微球", "明胶海绵", "embolic"], "栓塞材料"),
+            ("缝合线/可吸收线", ["缝线", "可吸收线", "薇乔", "抗菌薇乔", "prolene"], "suture"),
+        ]
+        for rule_name, keywords, device_key in device_rules:
+            device_code = self.kb.DEVICE_MAP.get(device_key, "Z")
+            child = DecisionTreeNode(
+                node_id=f"device_{body_part_key}_{op_key}_{approach_key}_{device_key}",
+                field="instruments",
+                operator="contains_any",
+                value=keywords,
+                pcs_component={"device": device_code},
+                rule_name=f"器械识别:{rule_name}"
+            )
+            children.append(child)
+
+        default_child = DecisionTreeNode(
+            node_id=f"device_{body_part_key}_{op_key}_{approach_key}_none",
+            field="all",
+            operator="exists",
+            value=True,
+            pcs_component={"device": "Z"},
+            rule_name="器械默认:无"
+        )
+        children.append(default_child)
         return children
 
 
 class Icd10PcsCodingService:
     def __init__(self):
+        self.settings = get_settings()
         self.kb = Icd10PcsKnowledgeBase()
         self.tree = Icd10PcsDecisionTree(self.kb)
-        self._confirmation_history: Dict[str, List[Dict[str, Any]]] = {}
-        logger.info("ICD-10-PCS手术编码服务初始化完成")
+        self._history_file = os.path.join(
+            getattr(self.settings, "output_dir", "./data/output"),
+            "icd10pcs_confirmations.json"
+        )
+        self._confirmation_history: Dict[str, List[Dict[str, Any]]] = self._load_history_from_disk()
+        self._recommend_cache: Dict[str, List[Dict[str, Any]]] = {}
+        logger.info(f"ICD-10-PCS手术编码服务初始化完成, 历史文件: {self._history_file}")
+
+    def _ensure_data_dir(self):
+        try:
+            parent_dir = os.path.dirname(self._history_file)
+            if parent_dir and not os.path.exists(parent_dir):
+                os.makedirs(parent_dir, exist_ok=True)
+        except Exception as e:
+            logger.warning(f"创建数据目录失败: {e}")
+
+    def _load_history_from_disk(self) -> Dict[str, List[Dict[str, Any]]]:
+        if not os.path.exists(self._history_file):
+            return {}
+        try:
+            with open(self._history_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                logger.info(f"加载ICD-10-PCS编码确认历史: {len(data)}条记录")
+                return data
+        except Exception as e:
+            logger.warning(f"加载ICD-10-PCS确认历史文件失败: {e}")
+        return {}
+
+    def _persist_history_to_disk(self):
+        try:
+            self._ensure_data_dir()
+            with open(self._history_file, "w", encoding="utf-8") as f:
+                json.dump(self._confirmation_history, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning(f"持久化ICD-10-PCS确认历史失败: {e}")
 
     def parse_entities(self, entities: List[Dict[str, Any]]) -> Dict[str, Any]:
         result = {
@@ -771,28 +903,25 @@ class Icd10PcsCodingService:
             if not evalue:
                 continue
 
-            if etype == "SURGERY_NAME":
+            if etype == ENTITY_TYPE_SURGERY_NAME:
                 result["surgery_name"] += " " + evalue
                 result["surgery_names_raw"].append(evalue)
-            elif etype in ("BODY_PART", "SURGERY_BODY_PART", "ANATOMY", "ANATOMICAL_SITE"):
+            elif etype in BODY_PART_ENTITY_TYPES:
                 result["body_part"].append(evalue)
                 result["body_parts_raw"].append(evalue)
-            elif etype in ("SURGERY_APPROACH", "APPROACH", "SURGICAL_APPROACH"):
+            elif etype in APPROACH_ENTITY_TYPES:
                 result["approach"].append(evalue)
-            elif etype in ("INSTRUMENT", "SURGERY_INSTRUMENT", "DEVICE", "IMPLANT"):
+            elif etype in DEVICE_ENTITY_TYPES:
                 result["instruments"].append(evalue)
-            elif etype in ("SURGERY_LEVEL", "SURGERY_SCOPE", "LATERALITY"):
+            elif etype in QUALIFIER_ENTITY_TYPES:
                 result["qualifiers"].append(evalue)
 
         result["surgery_name"] = result["surgery_name"].strip()
 
         if not result["approach"]:
-            approach_keywords = []
-            for kw_list in self.kb.APPROACH_MAP.keys():
-                approach_keywords.append(kw_list)
             for raw in [result["surgery_name"]] + result["body_part"]:
                 for ak, av in self.kb.APPROACH_MAP.items():
-                    if ak in raw:
+                    if ak in raw and ak not in result["approach"]:
                         result["approach"].append(ak)
 
         side_match = re.search(r"(左|右|双|单)(侧)?", result["surgery_name"])
@@ -811,24 +940,28 @@ class Icd10PcsCodingService:
                         entities: List[Dict[str, Any]],
                         record_id: Optional[int] = None,
                         top_k: int = 5) -> Dict[str, Any]:
-        start_time = __import__("time").time()
+        start_time = time.time()
 
         try:
             parsed = self.parse_entities(entities)
             recommendations = self._match_decision_tree(parsed, top_k)
 
-            elapsed_ms = int((__import__("time").time() - start_time) * 1000)
+            rec_dicts = [self._rec_to_dict(r) for r in recommendations]
+            if record_id is not None:
+                self._recommend_cache[str(record_id)] = rec_dicts
+
+            elapsed_ms = int((time.time() - start_time) * 1000)
             return {
                 "success": True,
                 "parsed_entities": parsed,
-                "recommendations": [self._rec_to_dict(r) for r in recommendations],
-                "top_code": self._rec_to_dict(recommendations[0]) if recommendations else None,
+                "recommendations": rec_dicts,
+                "top_code": rec_dicts[0] if rec_dicts else None,
                 "processing_time_ms": elapsed_ms,
                 "error_message": None,
             }
         except Exception as e:
             logger.error(f"ICD-10-PCS编码推荐失败: {e}", exc_info=True)
-            elapsed_ms = int((__import__("time").time() - start_time) * 1000)
+            elapsed_ms = int((time.time() - start_time) * 1000)
             return {
                 "success": False,
                 "parsed_entities": {},
@@ -921,6 +1054,10 @@ class Icd10PcsCodingService:
             field_value = " ".join(parsed.get("approach", []))
             if not field_value:
                 field_value = parsed.get("surgery_name", "")
+        elif field == "instruments":
+            field_value = " ".join(parsed.get("instruments", []))
+            if not field_value:
+                field_value = parsed.get("surgery_name", "")
 
         if operator == "contains_any":
             matched = [kw for kw in target if kw in field_value]
@@ -958,7 +1095,7 @@ class Icd10PcsCodingService:
                         break
 
             if not comp.body_part:
-                for part_key, kws in self.kb.BODY_PART_KEYWORMS.items():
+                for part_key, kws in self.kb.BODY_PART_KEYWORDS.items():
                     search_space = " ".join(parsed.get("body_part", []) + [parsed.get("surgery_name", "")])
                     if any(kw in search_space for kw in kws):
                         comp.body_part = self.kb.BODY_PART_MAP.get(part_key, "Z")
@@ -1124,22 +1261,35 @@ class Icd10PcsCodingService:
             "is_complete": rec.is_complete,
         }
 
-    def confirm_code(self, record_id: int, pcs_code: str, user_id: Optional[str] = None) -> Dict[str, Any]:
+    def confirm_code(self, record_id: int, pcs_code: str,
+                     user_id: Optional[str] = None,
+                     user_name: Optional[str] = None,
+                     source: str = "manual_confirm",
+                     additional_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         try:
             key = str(record_id)
             if key not in self._confirmation_history:
                 self._confirmation_history[key] = []
 
+            top_recommendation = self._recommend_cache.get(key, [None])[0] if key in self._recommend_cache else None
+
             entry = {
                 "record_id": record_id,
                 "pcs_code": pcs_code,
-                "confirmed_at": __import__("time").time(),
+                "confirmed_at": time.time(),
+                "confirmed_at_iso": time.strftime("%Y-%m-%dT%H:%M:%S"),
                 "confirmed_by": user_id or "system",
-                "source": "manual_confirm",
+                "confirmed_by_name": user_name or "系统",
+                "source": source,
+                "recommended_code": top_recommendation.get("pcs_code") if top_recommendation else None,
+                "recommendation_confidence": top_recommendation.get("confidence") if top_recommendation else None,
+                "is_matched": (top_recommendation.get("pcs_code") == pcs_code) if top_recommendation else None,
+                "additional_data": additional_data or {},
             }
             self._confirmation_history[key].append(entry)
+            self._persist_history_to_disk()
 
-            logger.info(f"手术编码确认: record_id={record_id}, pcs_code={pcs_code}")
+            logger.info(f"手术编码确认: record_id={record_id}, pcs_code={pcs_code}, source={source}")
             return {"success": True, "confirmation": entry, "error_message": None}
         except Exception as e:
             logger.error(f"编码确认失败: {e}", exc_info=True)
@@ -1148,6 +1298,7 @@ class Icd10PcsCodingService:
     def get_coding_history(self, record_id: Optional[int] = None,
                            limit: int = 100) -> Dict[str, Any]:
         try:
+            self._confirmation_history = self._load_history_from_disk()
             if record_id is not None:
                 key = str(record_id)
                 history = self._confirmation_history.get(key, [])
@@ -1160,6 +1311,18 @@ class Icd10PcsCodingService:
         except Exception as e:
             logger.error(f"获取编码历史失败: {e}", exc_info=True)
             return {"success": False, "history": [], "total": 0, "error_message": str(e)}
+
+    def get_latest_confirmation(self, record_id: int) -> Optional[Dict[str, Any]]:
+        try:
+            key = str(record_id)
+            history = self._confirmation_history.get(key, [])
+            if not history:
+                return None
+            history_sorted = sorted(history, key=lambda x: -x.get("confirmed_at", 0))
+            return history_sorted[0]
+        except Exception as e:
+            logger.warning(f"获取最新确认失败: {e}")
+            return None
 
     def get_coding_knowledge(self) -> Dict[str, Any]:
         return {

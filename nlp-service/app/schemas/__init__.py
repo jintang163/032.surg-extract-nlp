@@ -174,6 +174,11 @@ class Icd10PcsConfirmRequest(BaseModel):
     record_id: int = Field(..., description="手术记录ID")
     pcs_code: str = Field(..., description="医生确认的ICD-10-PCS编码", min_length=7, max_length=7)
     user_id: Optional[str] = Field(None, description="确认医生ID")
+    user_name: Optional[str] = Field(None, description="确认医生姓名")
+    source: Optional[str] = Field("manual_confirm", description="确认来源:manual_confirm/ai_adopt/auto_fill")
+    recommended_code: Optional[str] = Field(None, description="系统推荐的编码(用于对比)")
+    recommendation_confidence: Optional[float] = Field(None, description="系统推荐的置信度")
+    additional_data: Optional[Dict[str, Any]] = Field(None, description="附加信息")
 
 
 class Icd10PcsConfirmResponse(BaseModel):

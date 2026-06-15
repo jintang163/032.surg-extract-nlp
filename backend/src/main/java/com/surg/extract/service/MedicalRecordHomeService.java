@@ -83,6 +83,9 @@ public class MedicalRecordHomeService {
         home.setDepartment(dto.getDepartment());
         home.setSurgeryDate(dto.getSurgeryDate());
         home.setSurgeryName(dto.getSurgeryName());
+        if (StringUtils.hasText(dto.getSurgeryCode())) {
+            home.setSurgeryCode(dto.getSurgeryCode());
+        }
         home.setSurgeryLevel(dto.getSurgeryLevel());
         home.setIncisionLevel(dto.getIncisionLevel());
         home.setIncisionHealing(dto.getIncisionHealing());

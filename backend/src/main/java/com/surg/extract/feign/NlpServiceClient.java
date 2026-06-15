@@ -65,4 +65,26 @@ public interface NlpServiceClient {
             @RequestBody Map<String, Object> trainData,
             @RequestHeader("X-Train-Params") String paramsJson
     );
+
+    @PostMapping("/icd10-pcs/recommend")
+    Map<String, Object> recommendIcd10PcsCodes(@RequestBody Map<String, Object> request);
+
+    @PostMapping(value = "/icd10-pcs/recommend-from-text", consumes = "application/x-www-form-urlencoded")
+    Map<String, Object> recommendIcd10PcsFromText(
+            @RequestParam("text") String text,
+            @RequestParam(value = "record_id", required = false) String recordId,
+            @RequestParam(value = "top_k", defaultValue = "5") Integer topK
+    );
+
+    @PostMapping("/icd10-pcs/confirm")
+    Map<String, Object> confirmIcd10PcsCode(@RequestBody Map<String, Object> request);
+
+    @GetMapping("/icd10-pcs/history")
+    Map<String, Object> getIcd10PcsHistory(
+            @RequestParam(value = "record_id", required = false) Long recordId,
+            @RequestParam(value = "limit", defaultValue = "100") Integer limit
+    );
+
+    @GetMapping("/icd10-pcs/knowledge")
+    Map<String, Object> getIcd10PcsKnowledge();
 }
