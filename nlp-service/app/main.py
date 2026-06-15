@@ -1,6 +1,7 @@
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
+from typing import Optional
 import sys
 import os
 import tempfile
@@ -14,7 +15,11 @@ from app.schemas import (
     InstrumentRecognitionRequest, InstrumentRecognitionResponse,
     InstrumentCatalogResponse,
     MultimodalFusionRequest, MultimodalFusionResponse,
-    HealthResponse
+    HealthResponse,
+    Icd10PcsRecommendRequest, Icd10PcsRecommendResponse,
+    Icd10PcsConfirmRequest, Icd10PcsConfirmResponse,
+    Icd10PcsHistoryResponse, Icd10PcsKnowledgeResponse,
+    NerEntity
 )
 from app.services.ner_extract_service import NerExtractService
 from app.services.custom_ner_service import CustomNerService
@@ -29,6 +34,7 @@ from app.services.privacy_guard import get_data_masker, get_audit_logger
 from app.services.federated_client import get_federated_client
 from app.services.federated_aggregator import get_federated_aggregator
 from app.services.differential_privacy import DPConfig
+from app.services.icd10pcs_coding import get_icd10pcs_service
 
 
 settings = get_settings()
@@ -115,7 +121,8 @@ async def startup_event():
         get_asr_service()
         get_instrument_service()
         get_fusion_service()
-        logger.info("NLP服务（含多模态、自定义NER）初始化成功")
+        get_icd10pcs_service()
+        logger.info("NLP服务（含多模态、自定义NER、ICD-10-PCS手术编码）初始化成功")
     except Exception as e:
         logger.error(f"NLP服务初始化失败: {e}", exc_info=True)
 
@@ -1233,6 +1240,149 @@ async def api_dp_configure(request: dict):
     except Exception as e:
         logger.error(f"配置DP异常: {e}", exc_info=True)
         return {"success": False, "error_message": str(e)}
+
+
+@app.post("/api/v1/icd10-pcs/recommend",
+          response_model=Icd10PcsRecommendResponse,
+          tags=["ICD-10-PCS手术编码"])
+async def api_icd10pcs_recommend(
+    request: Icd10PcsRecommendRequest,
+):
+    logger.info(f"ICD-10-PCS编码推荐请求: record_id={request.record_id}, entities={len(request.entities)}")
+    start = time.time()
+
+    try:
+        service = get_icd10pcs_service()
+        entities_dict = [e.model_dump() for e in request.entities]
+        result = service.recommend_codes(
+            entities=entities_dict,
+            record_id=request.record_id,
+            top_k=request.top_k or 5,
+        )
+        result["processing_time_ms"] = int((time.time() - start) * 1000)
+        return Icd10PcsRecommendResponse(**result)
+    except Exception as e:
+        logger.error(f"ICD-10-PCS编码推荐异常: {e}", exc_info=True)
+        return Icd10PcsRecommendResponse(
+            success=False,
+            parsed_entities={},
+            recommendations=[],
+            top_code=None,
+            error_message=f"编码推荐服务异常: {str(e)}",
+            processing_time_ms=int((time.time() - start) * 1000),
+        )
+
+
+@app.post("/api/v1/icd10-pcs/confirm",
+          response_model=Icd10PcsConfirmResponse,
+          tags=["ICD-10-PCS手术编码"])
+async def api_icd10pcs_confirm(
+    request: Icd10PcsConfirmRequest,
+):
+    logger.info(f"ICD-10-PCS编码确认请求: record_id={request.record_id}, pcs_code={request.pcs_code}")
+    try:
+        service = get_icd10pcs_service()
+        result = service.confirm_code(
+            record_id=request.record_id,
+            pcs_code=request.pcs_code.upper(),
+            user_id=request.user_id,
+        )
+        return Icd10PcsConfirmResponse(**result)
+    except Exception as e:
+        logger.error(f"ICD-10-PCS编码确认异常: {e}", exc_info=True)
+        return Icd10PcsConfirmResponse(
+            success=False,
+            confirmation=None,
+            error_message=f"编码确认异常: {str(e)}",
+        )
+
+
+@app.get("/api/v1/icd10-pcs/history",
+         response_model=Icd10PcsHistoryResponse,
+         tags=["ICD-10-PCS手术编码"])
+async def api_icd10pcs_history(
+    record_id: Optional[int] = None,
+    limit: int = 100,
+):
+    logger.info(f"ICD-10-PCS编码历史查询: record_id={record_id}, limit={limit}")
+    try:
+        service = get_icd10pcs_service()
+        result = service.get_coding_history(record_id=record_id, limit=limit)
+        return Icd10PcsHistoryResponse(**result)
+    except Exception as e:
+        logger.error(f"ICD-10-PCS编码历史查询异常: {e}", exc_info=True)
+        return Icd10PcsHistoryResponse(
+            success=False,
+            history=[],
+            total=0,
+            error_message=f"历史查询异常: {str(e)}",
+        )
+
+
+@app.get("/api/v1/icd10-pcs/knowledge",
+         response_model=Icd10PcsKnowledgeResponse,
+         tags=["ICD-10-PCS手术编码"])
+async def api_icd10pcs_knowledge():
+    try:
+        service = get_icd10pcs_service()
+        result = service.get_coding_knowledge()
+        return Icd10PcsKnowledgeResponse(**result)
+    except Exception as e:
+        logger.error(f"ICD-10-PCS编码知识库查询异常: {e}", exc_info=True)
+        return Icd10PcsKnowledgeResponse(
+            success=False,
+            error_message=f"知识库查询异常: {str(e)}",
+        )
+
+
+@app.post("/api/v1/icd10-pcs/recommend-from-text",
+          response_model=Icd10PcsRecommendResponse,
+          tags=["ICD-10-PCS手术编码"])
+async def api_icd10pcs_recommend_from_text(
+    text: str = Form(..., description="手术记录文本", min_length=1),
+    record_id: Optional[int] = Form(None, description="手术记录ID"),
+    top_k: int = Form(5, ge=1, le=20, description="返回Top-K推荐编码"),
+    department: Optional[str] = Form(None, description="科室名称"),
+    ner_service: NerExtractService = Depends(get_ner_service),
+):
+    logger.info(f"ICD-10-PCS文本直接编码: record_id={record_id}, text_len={len(text)}")
+    start = time.time()
+
+    try:
+        extract_result = ner_service.extract_entities(
+            text=text,
+            record_id=record_id,
+            department=department,
+        )
+        if not extract_result.get("success"):
+            return Icd10PcsRecommendResponse(
+                success=False,
+                parsed_entities={},
+                recommendations=[],
+                top_code=None,
+                error_message=extract_result.get("error_message", "实体抽取失败"),
+                processing_time_ms=int((time.time() - start) * 1000),
+            )
+
+        entities = extract_result.get("entities", [])
+        coding_service = get_icd10pcs_service()
+        result = coding_service.recommend_codes(
+            entities=entities,
+            record_id=record_id,
+            top_k=top_k,
+        )
+        result["processing_time_ms"] = int((time.time() - start) * 1000)
+        return Icd10PcsRecommendResponse(**result)
+    except Exception as e:
+        logger.error(f"ICD-10-PCS文本直接编码异常: {e}", exc_info=True)
+        return Icd10PcsRecommendResponse(
+            success=False,
+            parsed_entities={},
+            recommendations=[],
+            top_code=None,
+            error_message=f"文本编码服务异常: {str(e)}",
+            processing_time_ms=int((time.time() - start) * 1000),
+        )
 
 
 @app.get("/api/v1/system/offline-status", tags=["系统"])
