@@ -28,7 +28,7 @@ from app.services.multimodal_fusion_service import MultimodalFusionService
 from app.services.privacy_guard import get_data_masker, get_audit_logger
 from app.services.federated_client import get_federated_client
 from app.services.federated_aggregator import get_federated_aggregator
-from app.services.differential_privacy import get_dp_engine, DPConfig
+from app.services.differential_privacy import DPConfig
 
 
 settings = get_settings()
@@ -98,6 +98,17 @@ def get_fusion_service() -> MultimodalFusionService:
 async def startup_event():
     logger.info(f"启动NLP服务: {settings.app_name} v{settings.app_version}")
     logger.info(f"监听地址: {settings.host}:{settings.port}")
+    logger.info(f"离线模式: {settings.offline_mode}")
+    logger.info(f"BERT本地路径: {settings.bert_local_path}")
+
+    try:
+        from app.services.gpu_optimizer import get_gpu_optimizer
+        gpu_opt = get_gpu_optimizer()
+        gpu_info = gpu_opt.get_gpu_info()
+        logger.info(f"GPU状态: {gpu_info}")
+    except Exception as e:
+        logger.warning(f"GPU优化器初始化异常: {e}")
+
     try:
         get_ner_service()
         get_custom_ner_service()
@@ -749,10 +760,7 @@ async def api_weekly_train():
 
 
 @app.post("/api/v1/privacy/mask", tags=["隐私保护"])
-async def api_privacy_mask(
-    request: dict,
-):
-    """数据脱敏接口 - 对文本或实体进行脱敏处理"""
+async def api_privacy_mask(request: dict):
     text = request.get("text", "")
     entities = request.get("entities", [])
     fields = request.get("fields")
@@ -785,7 +793,6 @@ async def api_privacy_mask(
 
 @app.get("/api/v1/privacy/mask-fields", tags=["隐私保护"])
 async def api_privacy_mask_fields():
-    """获取支持的脱敏字段列表"""
     try:
         masker = get_data_masker()
         fields = []
@@ -819,7 +826,6 @@ async def api_privacy_audit_logs(
     patient_id: str = None,
     limit: int = 100,
 ):
-    """查询隐私审计日志"""
     logger.info(f"查询审计日志: event_type={event_type}, user_id={user_id}")
 
     try:
@@ -848,7 +854,6 @@ async def api_privacy_audit_logs(
 
 @app.get("/api/v1/privacy/audit/statistics", tags=["隐私保护"])
 async def api_privacy_audit_statistics(days: int = 30):
-    """获取隐私审计统计信息"""
     logger.info(f"获取审计统计: days={days}")
 
     try:
@@ -869,7 +874,6 @@ async def api_privacy_audit_statistics(days: int = 30):
 
 @app.get("/api/v1/privacy/audit/verify", tags=["隐私保护"])
 async def api_privacy_audit_verify(checksum: str):
-    """验证审计日志条目完整性"""
     logger.info(f"验证日志完整性: checksum={checksum[:16]}...")
 
     try:
@@ -889,20 +893,102 @@ async def api_privacy_audit_verify(checksum: str):
         }
 
 
+@app.post("/api/v1/federated/client/local-train", tags=["联邦学习"])
+async def api_federated_local_train(request: dict):
+    """联邦学习客户端 - 执行本地训练（DP在训练循环中生效）"""
+    model_path = request.get("model_path", "./models/surgery-ner")
+    epochs = request.get("epochs")
+    lr = request.get("lr")
+    dp_noise_multiplier = request.get("dp_noise_multiplier")
+    dp_max_grad_norm = request.get("dp_max_grad_norm")
+
+    logger.info(f"联邦学习本地训练: model_path={model_path}")
+    start = time.time()
+
+    try:
+        client = get_federated_client()
+
+        model = client.load_model(model_path)
+        if model is None:
+            return {
+                "success": False,
+                "error_message": f"无法加载模型: {model_path}",
+                "processing_time_ms": int((time.time() - start) * 1000),
+            }
+
+        train_samples = request.get("train_samples", [])
+        if not train_samples:
+            return {
+                "success": False,
+                "error_message": "训练数据为空，请提供train_samples",
+                "processing_time_ms": int((time.time() - start) * 1000),
+            }
+
+        from torch.utils.data import DataLoader, Dataset
+
+        class _SimpleNerDataset(Dataset):
+            def __init__(self, samples):
+                self.samples = samples
+            def __len__(self):
+                return len(self.samples)
+            def __getitem__(self, idx):
+                return self.samples[idx]
+
+        dataset = _SimpleNerDataset(train_samples)
+        loader = DataLoader(
+            dataset,
+            batch_size=client.fl_config["batch_size"],
+            shuffle=True,
+        )
+
+        dp_config = None
+        if dp_noise_multiplier is not None or dp_max_grad_norm is not None:
+            dp_config = DPConfig(
+                enabled=True,
+                noise_multiplier=dp_noise_multiplier or client.fl_config["dp_noise_multiplier"],
+                max_grad_norm=dp_max_grad_norm or client.fl_config["dp_max_grad_norm"],
+            )
+
+        result = client.local_train(
+            model=model,
+            train_loader=loader,
+            epochs=epochs,
+            lr=lr,
+            dp_config=dp_config,
+        )
+
+        client.save_model(model, model_path)
+
+        result["processing_time_ms"] = int((time.time() - start) * 1000)
+
+        get_audit_logger().log_model_training(
+            user_id=client.site_id,
+            training_type="federated_local",
+            sample_count=result["sample_count"],
+            uses_patient_data=True,
+            dp_enabled=client.fl_config["dp_enabled"],
+        )
+
+        return result
+    except Exception as e:
+        logger.error(f"联邦学习本地训练异常: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error_message": f"本地训练异常: {str(e)}",
+            "processing_time_ms": int((time.time() - start) * 1000),
+        }
+
+
 @app.post("/api/v1/federated/client/export-params", tags=["联邦学习"])
-async def api_federated_export_params(
-    request: dict,
-):
-    """联邦学习客户端 - 导出模型参数（加密后用于上传）"""
-    model_path = request.get("model_path", "")
+async def api_federated_export_params(request: dict):
+    """联邦学习客户端 - 导出模型参数（训练中已应用DP，导出不再加噪）"""
+    model_path = request.get("model_path", "./models/surgery-ner")
     output_path = request.get("output_path", "")
     train_sample_count = request.get("train_sample_count", 0)
     encryption_key = request.get("encryption_key")
-    apply_dp = request.get("apply_dp", True)
 
     logger.info(
-        f"联邦学习导出参数: model_path={model_path}, "
-        f"samples={train_sample_count}, apply_dp={apply_dp}"
+        f"联邦学习导出参数: model_path={model_path}, samples={train_sample_count}"
     )
     start = time.time()
 
@@ -912,20 +998,18 @@ async def api_federated_export_params(
             model_path=model_path,
             train_sample_count=train_sample_count,
             output_path=output_path,
-            encryption_key=encryption_key,
-            apply_dp=apply_dp,
+            encryption_key_hint=encryption_key,
         )
 
         result["processing_time_ms"] = int((time.time() - start) * 1000)
 
-        audit_logger = get_audit_logger()
-        audit_logger.log_federated_update(
+        get_audit_logger().log_federated_update(
             site_id=client.site_id,
             site_name=client.site_name,
             round_num=request.get("round_num", 0),
             sample_count=train_sample_count,
             operation="parameter_export",
-            dp_applied=apply_dp,
+            dp_applied=client.fl_config["dp_enabled"],
             encrypted=encryption_key is not None,
         )
 
@@ -940,12 +1024,10 @@ async def api_federated_export_params(
 
 
 @app.post("/api/v1/federated/client/import-params", tags=["联邦学习"])
-async def api_federated_import_params(
-    request: dict,
-):
-    """联邦学习客户端 - 导入聚合后的全局模型参数"""
+async def api_federated_import_params(request: dict):
+    """联邦学习客户端 - 导入聚合后的全局模型参数（回灌）"""
     param_file = request.get("param_file", "")
-    model_path = request.get("model_path", "")
+    model_path = request.get("model_path", "./models/surgery-ner")
     output_model_path = request.get("output_model_path", "")
     encryption_key = request.get("encryption_key")
 
@@ -958,13 +1040,12 @@ async def api_federated_import_params(
             param_file=param_file,
             model_path=model_path,
             output_model_path=output_model_path,
-            encryption_key=encryption_key,
+            encryption_key_hint=encryption_key,
         )
 
         result["processing_time_ms"] = int((time.time() - start) * 1000)
 
-        audit_logger = get_audit_logger()
-        audit_logger.log_federated_update(
+        get_audit_logger().log_federated_update(
             site_id=client.site_id,
             site_name=client.site_name,
             round_num=request.get("round_num", 0),
@@ -986,29 +1067,17 @@ async def api_federated_import_params(
 
 @app.get("/api/v1/federated/client/status", tags=["联邦学习"])
 async def api_federated_client_status():
-    """获取联邦学习客户端状态"""
     try:
         client = get_federated_client()
-        return {
-            "success": True,
-            "site_id": client.site_id,
-            "site_name": client.site_name,
-            "dp_enabled": client.dp_enabled,
-            "dp_noise_multiplier": client.dp_noise_multiplier,
-            "offline_mode": settings.offline_mode,
-        }
+        info = client.get_client_info()
+        return {"success": True, **info}
     except Exception as e:
         logger.error(f"获取客户端状态异常: {e}", exc_info=True)
-        return {
-            "success": False,
-            "error_message": str(e),
-        }
+        return {"success": False, "error_message": str(e)}
 
 
 @app.post("/api/v1/federated/aggregator/receive", tags=["联邦学习"])
-async def api_federated_receive(
-    request: dict,
-):
+async def api_federated_receive(request: dict):
     """联邦学习聚合器 - 接收客户端参数更新"""
     client_id = request.get("client_id", "")
     client_name = request.get("client_name", "")
@@ -1016,9 +1085,7 @@ async def api_federated_receive(
     param_data = request.get("param_data", "")
     encryption_key = request.get("encryption_key")
 
-    logger.info(
-        f"联邦学习接收参数: client_id={client_id}, round={round_num}"
-    )
+    logger.info(f"联邦学习接收参数: client_id={client_id}, round={round_num}")
     start = time.time()
 
     try:
@@ -1028,7 +1095,7 @@ async def api_federated_receive(
             client_name=client_name,
             round_num=round_num,
             param_data=param_data,
-            encryption_key=encryption_key,
+            encryption_key_hint=encryption_key,
         )
 
         result["processing_time_ms"] = int((time.time() - start) * 1000)
@@ -1044,9 +1111,7 @@ async def api_federated_receive(
 
 
 @app.post("/api/v1/federated/aggregator/aggregate", tags=["联邦学习"])
-async def api_federated_aggregate(
-    request: dict,
-):
+async def api_federated_aggregate(request: dict):
     """联邦学习聚合器 - 执行参数聚合"""
     round_num = request.get("round_num")
     algorithm = request.get("algorithm", "fedavg")
@@ -1064,7 +1129,7 @@ async def api_federated_aggregate(
             round_num=round_num,
             algorithm=algorithm,
             min_clients=min_clients,
-            encryption_key=encryption_key,
+            encryption_key_hint=encryption_key,
         )
 
         result["processing_time_ms"] = int((time.time() - start) * 1000)
@@ -1081,31 +1146,29 @@ async def api_federated_aggregate(
 
 @app.get("/api/v1/federated/aggregator/status", tags=["联邦学习"])
 async def api_federated_aggregator_status():
-    """获取联邦学习聚合器状态"""
     try:
         aggregator = get_federated_aggregator()
+        status = aggregator.get_aggregator_status()
         return {
             "success": True,
-            "current_round": aggregator.current_round,
-            "connected_clients": list(aggregator.client_updates.keys()),
-            "client_count": len(aggregator.client_updates),
-            "aggregation_history": aggregator.get_aggregation_history(),
+            **status,
             "supported_algorithms": ["fedavg", "median", "trimmed_mean"],
         }
     except Exception as e:
         logger.error(f"获取聚合器状态异常: {e}", exc_info=True)
-        return {
-            "success": False,
-            "error_message": str(e),
-        }
+        return {"success": False, "error_message": str(e)}
 
 
 @app.get("/api/v1/federated/aggregator/result/{round_num}", tags=["联邦学习"])
 async def api_federated_aggregator_result(round_num: int):
-    """获取指定轮次的聚合结果"""
     try:
         aggregator = get_federated_aggregator()
         result = aggregator.get_aggregated_result(round_num)
+        if result is None:
+            return {
+                "success": False,
+                "error_message": f"第 {round_num} 轮聚合结果不存在",
+            }
         return {
             "success": True,
             "round_num": round_num,
@@ -1113,41 +1176,32 @@ async def api_federated_aggregator_result(round_num: int):
         }
     except Exception as e:
         logger.error(f"获取聚合结果异常: {e}", exc_info=True)
-        return {
-            "success": False,
-            "error_message": str(e),
-        }
+        return {"success": False, "error_message": str(e)}
 
 
 @app.get("/api/v1/dp/status", tags=["差分隐私"])
 async def api_dp_status():
-    """获取差分隐私引擎状态"""
     try:
-        dp_engine = get_dp_engine()
-        if dp_engine:
+        client = get_federated_client()
+        if client._dp_engine:
             return {
                 "success": True,
-                **dp_engine.get_privacy_report(),
+                **client._dp_engine.get_privacy_report(),
             }
-        else:
-            return {
-                "success": True,
-                "enabled": False,
-                "message": "差分隐私引擎未初始化",
-            }
+        return {
+            "success": True,
+            "enabled": client.fl_config["dp_enabled"],
+            "noise_multiplier": client.fl_config["dp_noise_multiplier"],
+            "max_grad_norm": client.fl_config["dp_max_grad_norm"],
+            "message": "差分隐私引擎将在训练时初始化",
+        }
     except Exception as e:
         logger.error(f"获取DP状态异常: {e}", exc_info=True)
-        return {
-            "success": False,
-            "error_message": str(e),
-        }
+        return {"success": False, "error_message": str(e)}
 
 
 @app.post("/api/v1/dp/configure", tags=["差分隐私"])
-async def api_dp_configure(
-    request: dict,
-):
-    """配置差分隐私参数"""
+async def api_dp_configure(request: dict):
     enabled = request.get("enabled", True)
     noise_multiplier = request.get("noise_multiplier", 1.0)
     max_grad_norm = request.get("max_grad_norm", 1.0)
@@ -1160,55 +1214,61 @@ async def api_dp_configure(
     )
 
     try:
-        config = DPConfig(
-            enabled=enabled,
-            noise_multiplier=noise_multiplier,
-            max_grad_norm=max_grad_norm,
-            target_epsilon=target_epsilon,
-        )
+        client = get_federated_client()
+        client.fl_config["dp_enabled"] = enabled
+        client.fl_config["dp_noise_multiplier"] = noise_multiplier
+        client.fl_config["dp_max_grad_norm"] = max_grad_norm
 
         return {
             "success": True,
-            "message": "差分隐私配置已更新",
+            "message": "差分隐私配置已更新，将在下次训练时生效",
             "config": {
-                "enabled": config.enabled,
-                "noise_multiplier": config.noise_multiplier,
-                "max_grad_norm": config.max_grad_norm,
-                "target_epsilon": config.target_epsilon,
-                "target_delta": config.target_delta,
+                "enabled": enabled,
+                "noise_multiplier": noise_multiplier,
+                "max_grad_norm": max_grad_norm,
+                "target_epsilon": target_epsilon,
                 "max_epsilon": max_epsilon,
             },
         }
     except Exception as e:
         logger.error(f"配置DP异常: {e}", exc_info=True)
-        return {
-            "success": False,
-            "error_message": str(e),
-        }
+        return {"success": False, "error_message": str(e)}
 
 
 @app.get("/api/v1/system/offline-status", tags=["系统"])
 async def api_offline_status():
-    """获取离线部署状态"""
     try:
+        import os
+        from app.services.gpu_optimizer import get_gpu_optimizer
+
+        gpu_opt = get_gpu_optimizer()
+        gpu_info = gpu_opt.get_gpu_info()
+
+        bert_path = settings.bert_local_path
+        bert_exists = os.path.isdir(bert_path) and os.path.exists(os.path.join(bert_path, "pytorch_model.bin"))
+
+        ner_model_path = os.path.join(settings.model_dir, "surgery-ner")
+        ner_model_exists = os.path.isdir(ner_model_path) and os.path.exists(os.path.join(ner_model_path, "pytorch_model.bin"))
+
         return {
             "success": True,
             "offline_mode": settings.offline_mode,
-            "bert_local_path": settings.bert_local_path,
+            "bert_local_path": bert_path,
+            "bert_model_ready": bert_exists,
+            "ner_model_path": ner_model_path,
+            "ner_model_ready": ner_model_exists,
+            "gpu_available": gpu_info.get("gpu_available", False),
+            "gpu_info": gpu_info,
             "privacy_protection": {
                 "data_masking": True,
                 "differential_privacy": True,
                 "federated_learning": True,
                 "audit_logging": True,
             },
-            "gpu_available": False,
         }
     except Exception as e:
         logger.error(f"获取离线状态异常: {e}", exc_info=True)
-        return {
-            "success": False,
-            "error_message": str(e),
-        }
+        return {"success": False, "error_message": str(e)}
 
 
 if __name__ == "__main__":

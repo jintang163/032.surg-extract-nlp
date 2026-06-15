@@ -250,7 +250,7 @@ class DifferentialPrivacyEngine:
 
 
 class DPSGD(Optimizer):
-    """差分隐私SGD优化器（简化版）"""
+    """差分隐私SGD优化器"""
 
     def __init__(
         self,
@@ -258,6 +258,7 @@ class DPSGD(Optimizer):
         lr: float = 0.01,
         noise_multiplier: float = 1.0,
         max_grad_norm: float = 1.0,
+        batch_size: int = 1,
         **kwargs,
     ):
         defaults = dict(lr=lr, **kwargs)
@@ -266,15 +267,14 @@ class DPSGD(Optimizer):
         self.noise_multiplier = noise_multiplier
         self.max_grad_norm = max_grad_norm
         self.sigma = noise_multiplier * max_grad_norm
+        self.batch_size = batch_size
         self.dp_engine = None
 
     def set_dp_engine(self, dp_engine: DifferentialPrivacyEngine):
-        """设置差分隐私引擎"""
         self.dp_engine = dp_engine
 
     @torch.no_grad()
     def step(self, closure=None):
-        """执行一步优化，包含差分隐私保护"""
         loss = None
         if closure is not None:
             with torch.enable_grad():
@@ -282,7 +282,7 @@ class DPSGD(Optimizer):
 
         if self.dp_engine and self.dp_engine.config.enabled:
             for group in self.param_groups:
-                grad_norm = torch.nn.utils.clip_grad_norm_(
+                torch.nn.utils.clip_grad_norm_(
                     group["params"], self.max_grad_norm
                 )
 
@@ -290,7 +290,7 @@ class DPSGD(Optimizer):
                     if param.grad is None:
                         continue
 
-                    noise_std = self.sigma / max(self.dp_engine.config.get("batch_size", 1), 1)
+                    noise_std = self.sigma / max(self.batch_size, 1)
                     noise = torch.normal(
                         mean=0.0,
                         std=noise_std,
@@ -307,37 +307,6 @@ class DPSGD(Optimizer):
                 param.add_(param.grad, alpha=-group["lr"])
 
         return loss
-
-
-def add_gaussian_noise_to_params(
-    model: nn.Module,
-    noise_multiplier: float = 1.0,
-    sensitivity: float = 1.0,
-    exclude_bert: bool = True,
-) -> nn.Module:
-    """向模型参数添加高斯噪声（用于联邦学习参数上传前的隐私保护）"""
-    sigma = noise_multiplier * sensitivity
-
-    with torch.no_grad():
-        for name, param in model.named_parameters():
-            if exclude_bert and "bert" in name.lower():
-                continue
-
-            noise = torch.normal(
-                mean=0.0,
-                std=sigma,
-                size=param.shape,
-                device=param.device,
-                dtype=param.dtype,
-            )
-            param.add_(noise)
-
-    logger.info(
-        f"[差分隐私] 已向模型参数添加高斯噪声 - "
-        f"噪声乘数: {noise_multiplier}, 敏感度: {sensitivity}, σ: {sigma:.4f}"
-    )
-
-    return model
 
 
 def add_laplace_noise(

@@ -67,13 +67,27 @@ ENTITY_TYPE_ALIASES = {
 class NerModelService:
     def __init__(self):
         self.settings = get_settings()
-        self.device = self.settings.device
         self.inference = None
         self.model_loaded = False
         self.model_weight_exists = False
         self.label_to_id = {label: i for i, label in enumerate(ENTITY_LABELS)}
         self.id_to_label = {i: label for i, label in enumerate(ENTITY_LABELS)}
+
+        self._gpu_optimizer = None
+        self._effective_device = self._resolve_device()
         self._try_load_model()
+
+    def _resolve_device(self) -> str:
+        try:
+            from app.services.gpu_optimizer import get_gpu_optimizer
+            gpu_opt = get_gpu_optimizer()
+            self._gpu_optimizer = gpu_opt
+            device_str = str(gpu_opt.device)
+            logger.info(f"[NER模型] 设备解析: {device_str}")
+            return device_str
+        except Exception as e:
+            logger.warning(f"[NER模型] GPU优化器不可用，使用配置设备: {e}")
+            return self.settings.device
 
     def _try_load_model(self):
         model_dir = os.path.join(self.settings.model_dir, "surgery-ner")
@@ -112,11 +126,18 @@ class NerModelService:
                 model_dir=model_dir,
                 bert_model_name=self.settings.bert_model_name,
                 max_seq_length=min(self.settings.max_text_length, 512),
-                device=self.device,
+                device=self._effective_device,
             )
             self.model_loaded = True
             self.model_weight_exists = True
-            logger.info(f"[NER模型] BiLSTM-CRF模型加载成功: {model_dir}")
+            logger.info(
+                f"[NER模型] BiLSTM-CRF模型加载成功: {model_dir}, "
+                f"设备: {self._effective_device}"
+            )
+
+            if self._gpu_optimizer and self._effective_device.startswith("cuda"):
+                self._warmup_gpu()
+
         except ImportError as e:
             logger.warning(
                 f"[NER模型] 深度学习依赖未安装，无法加载模型: {e}。"
@@ -131,6 +152,21 @@ class NerModelService:
             )
             self.model_loaded = False
 
+    def _warmup_gpu(self):
+        try:
+            import torch
+            sample_input_ids = torch.tensor(
+                [[101] + [0] * 31], dtype=torch.long, device=self._effective_device
+            )
+            sample_attention_mask = torch.tensor(
+                [[1] * 32], dtype=torch.long, device=self._effective_device
+            )
+            sample_input = {"input_ids": sample_input_ids, "attention_mask": sample_attention_mask}
+            self._gpu_optimizer.warmup_model(self.inference.model, sample_input, iterations=3)
+            logger.info("[NER模型] GPU预热完成")
+        except Exception as e:
+            logger.debug(f"[NER模型] GPU预热跳过: {e}")
+
     def predict(self, text: str) -> List[Dict[str, Any]]:
         if not text or not text.strip():
             return []
@@ -139,7 +175,10 @@ class NerModelService:
             return []
 
         try:
-            raw_entities = self.inference.predict(text)
+            if self._gpu_optimizer and self._effective_device.startswith("cuda"):
+                raw_entities = self._gpu_optimizer.optimize_inference(self.inference.predict)(text)
+            else:
+                raw_entities = self.inference.predict(text)
             return [self._normalize_entity(e) for e in raw_entities if e]
         except Exception as e:
             logger.error(f"[NER模型] 预测失败，返回空列表（将由正则和规则引擎补全）: {e}", exc_info=True)

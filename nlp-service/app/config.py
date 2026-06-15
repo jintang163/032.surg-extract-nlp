@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     model_dir: str = "./models"
     bert_model_name: str = "bert-base-chinese"
     bert_local_path: str = os.getenv("BERT_LOCAL_PATH", "./models/bert-base-chinese")
-    device: str = "cpu"
-    use_gpu: bool = False
+    device: str = os.getenv("DEVICE", "auto")
+    use_gpu: bool = os.getenv("USE_GPU", "auto").lower() in ("true", "1", "auto")
     offline_mode: bool = os.getenv("OFFLINE_MODE", "false").lower() == "true"
 
     max_text_length: int = 10000

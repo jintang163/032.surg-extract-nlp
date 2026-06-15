@@ -18,7 +18,6 @@ class GpuOptimizer:
         self._init_memory_management()
 
     def _init_device(self) -> torch.device:
-        """初始化设备（GPU或CPU）"""
         if self.settings.use_gpu and torch.cuda.is_available():
             gpu_count = torch.cuda.device_count()
             logger.info(f"[GPU优化] 检测到 {gpu_count} 个CUDA设备")
